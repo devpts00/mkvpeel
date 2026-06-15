@@ -1,0 +1,12 @@
+[package]
+name = "mkvpeel"
+version = "0.0.1"
+edition = "2021"
+
+[dependencies]
+tracing = "0.1.41"
+tracing-subscriber = { version = "0.3.19", features = ["env-filter"] }
+faststr = "0.2.34"
+byteorder = "1.5.0"
+clap = { version = "4.6.0", features = ["derive"] }
+thiserror = "2.0.18"
