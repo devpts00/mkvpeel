@@ -1,5 +1,5 @@
 use clap::Parser;
-use tracing::debug;
+use tracing::{debug, info};
 use crate::args::{Cmd, Proto};
 use crate::util::{init_tracing, log};
 
@@ -10,5 +10,5 @@ mod error;
 fn main() {
     let _guard = init_tracing();
     let cmd = Cmd::parse();
-    debug!("cmd: {:?}", cmd);
+    info!("cmd: {:?}", cmd);
 }
