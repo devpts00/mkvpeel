@@ -28,11 +28,10 @@ pub fn init_tracing() {
 }
 
 #[inline]
-pub fn log<T: Debug + Display, E: Error>(result: Result<T, E>) {
+pub fn log<T: Debug, E: Error>(result: Result<T, E>) {
     match result {
         Ok(value) => {
             debug!("result: {:?}", value);
-            println!("{}", value);
         },
         Err(err) => {
             error!("error: {}", err)

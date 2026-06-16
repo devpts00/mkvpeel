@@ -8,12 +8,15 @@ pub enum MkvPeelError {
 
     #[error("parse: {0}")]
     Parse(#[from] AddrParseError),
-    
+
     #[error("packet: {0}, operation: {1}")]
     Packet(&'static str, &'static str),
     
     #[error("io: {0}")]
     Io(#[from] std::io::Error),
+
+    #[error("mkv: {0}")]
+    Mkv(#[from] matroska_demuxer::DemuxError),
 
     #[error("nul: {0}")]
     Nul(#[from] std::ffi::NulError),
