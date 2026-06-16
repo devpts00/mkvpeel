@@ -5,14 +5,13 @@ use std::fs::File;
 use std::io::{Read, Seek};
 use std::fmt::Write;
 use std::num::NonZeroU64;
-use std::path::Path;
 use std::process::Command;
 use std::str::FromStr;
 use clap::Parser;
 use faststr::FastStr;
 use matroska_demuxer::{Audio, MatroskaFile, TrackEntry, TrackType};
 use thiserror::Error;
-use tracing::{debug, error, info};
+use tracing::info;
 use crate::args::{Cmd};
 use crate::error::MkvPeelError;
 use crate::util::{init_tracing, log};
@@ -150,13 +149,13 @@ fn less_subtitle(s1: &TrackEntry, s2: &TrackEntry) -> bool {
     c1 < c2
 }
 
-fn dump(track: &TrackEntry) {
+fn dump(verb: &'static str, track: &TrackEntry) {
     let number = track.track_number().get();
     let language = track.language_bcp47().unwrap_or("n/a");
     let codec = track.codec_id();
     let name = track.name().unwrap_or("n/a");
     let channels = track.audio().map(|a| a.channels());
-    info!("track: {}, lang: {}, codec: {}, name: {}, channels: {:?}", number - 1, language, codec, name, channels);
+    info!("{}, track: {}, lang: {}, codec: {}, name: {}, channels: {:?}", verb, number - 1, language, codec, name, channels);
 }
 
 fn tracks<R>(mkv: MatroskaFile<R>, languages: &[FastStr]) -> (Vec<u64>, Vec<u64>)
@@ -166,33 +165,41 @@ fn tracks<R>(mkv: MatroskaFile<R>, languages: &[FastStr]) -> (Vec<u64>, Vec<u64>
     let mut subtitles = HashMap::new();
 
     for track in mkv.tracks() {
-        dump(track);
         if let Some(language) = track.language_bcp47() {
             if let Some(language) = languages.iter().find(|l| l.as_str() == language) {
                 if languages.contains(language) {
                     match track.track_type() {
                         TrackType::Audio => {
-                            //dump(track);
                             audios.entry(language)
                                 .and_modify(|t| {
                                     if less_audio(*t, track) {
+                                        dump("replace", track);
                                         *t = track
+                                    } else {
+                                        dump("skip", track);
                                     }
                                 })
-                                .or_insert(track);
+                                .or_insert_with(|| {
+                                    dump("insert", track);
+                                    track
+                                });
                         }
                         TrackType::Subtitle => {
-                            //dump(track);
                             subtitles.entry(language)
                                 .and_modify(|t| {
                                     if less_subtitle(*t, track) {
+                                        dump("replace", track);
                                         *t = track
+                                    } else {
+                                        dump("skip", track);
                                     }
                                 })
-                                .or_insert(track);
+                                .or_insert_with(|| {
+                                    dump("insert", track);
+                                    track
+                                });
                         }
                         _ => {
-                            ;
                         }
                     }
                 }

@@ -1,12 +1,11 @@
 use std::error::Error;
-use std::fmt::{Debug, Display};
+use std::fmt::Debug;
 use tracing::level_filters::LevelFilter;
 use tracing::{debug, error};
 use tracing_subscriber::fmt::format::FmtSpan;
 use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::util::SubscriberInitExt;
 use tracing_subscriber::{EnvFilter, Layer};
-use crate::error::MkvPeelError;
 
 pub fn init_tracing() {
     tracing_subscriber::registry()
