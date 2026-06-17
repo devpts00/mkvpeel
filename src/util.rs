@@ -1,5 +1,5 @@
 use std::error::Error;
-use std::fmt::Debug;
+use std::fmt::{Debug, Display, Write};
 use tracing::level_filters::LevelFilter;
 use tracing::{debug, error};
 use tracing_subscriber::fmt::format::FmtSpan;
@@ -38,3 +38,19 @@ pub fn log<T: Debug, E: Error>(result: Result<T, E>) {
     }
 }
 
+#[inline]
+pub fn join<T: Display>(tracks: Vec<T>) -> String {
+    let mut text = String::with_capacity(tracks.len() * 3);
+    if !tracks.is_empty() {
+        for track in tracks {
+            write!(&mut text, "{},", track).unwrap();
+        }
+        text.truncate(text.len() - 1);
+    }
+    text
+}
+
+#[inline]
+pub fn to_lowercase(ss: Vec<String>) -> Vec<String> {
+    ss.into_iter().map(|s| s.to_lowercase()).collect()
+}

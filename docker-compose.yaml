@@ -1,0 +1,21 @@
+services:
+  mtx:
+    image: jlesage/mkvtoolnix:latest
+    container_name: mkvpeel
+    environment:
+#      - USER_ID=1026
+#      - GROUP_ID=100
+      - TZ=Europe/Moscow
+    volumes:
+      - ./target/x86_64-unknown-linux-musl:/target
+      - ./in:/downloads:ro
+      - ./out:/movies2:rw
+#      - /volume3/downloads:/downloads:ro
+#      - /volume2/video:/video:ro
+#      - /volume1/movies1:/movies1:rw
+#      - /volume2/movies2:/movies2:rw
+#    working_dir: "/"
+#    restart: unless-stopped
+    entrypoint: ["/target/debug/mkvpeel", "--src=/downloads", "--dst=/movies2", "--languages=en,ru"]
+#    entrypoint: ["ldd", "/target/debug/mkvpeel"]
+#    entrypoint: ["ls", "-l", "/target/debug"]

@@ -1,10 +1,9 @@
 use std::cmp::Ordering;
 use std::collections::HashMap;
 use std::ffi::OsStr;
-use std::fmt::{Display, Formatter};
+use std::fmt::{Display, Formatter, Write};
 use std::fs::{metadata, read_dir, File};
 use std::io::{Read, Seek};
-use std::fmt::Write;
 use std::num::NonZeroU64;
 use std::os::unix::ffi::OsStrExt;
 use std::path::Path;
@@ -14,13 +13,12 @@ use std::thread::sleep;
 use std::time::Duration;
 use chrono::{Datelike, Utc};
 use clap::Parser;
-use faststr::FastStr;
 use matroska_demuxer::{Audio, MatroskaFile, TrackEntry, TrackType};
 use thiserror::Error;
 use tracing::{error, info};
 use crate::args::{Cmd};
 use crate::error::MkvPeelError;
-use crate::util::{init_tracing, log};
+use crate::util::{init_tracing, join, log, to_lowercase};
 
 mod util;
 mod args;
@@ -52,12 +50,12 @@ impl Display for TrackKind {
 #[derive(Debug, Error)]
 struct UnknownTrackCodecError {
     kind: TrackKind,
-    codec: FastStr,
+    codec: String,
 }
 
 impl UnknownTrackCodecError {
     fn new(track_type: TrackType, codec: &str) -> Self {
-        UnknownTrackCodecError { kind: TrackKind::new(track_type), codec: FastStr::new(codec) }
+        UnknownTrackCodecError { kind: TrackKind::new(track_type), codec: codec.to_string() }
     }
 }
 
@@ -164,48 +162,69 @@ fn dump(verb: &'static str, track: &TrackEntry) {
     info!("{}, track: {}, lang: {}, codec: {}, name: {}, channels: {:?}", verb, number - 1, language, codec, name, channels);
 }
 
-fn tracks<R: Read + Seek>(mkv: MatroskaFile<R>, languages: &[FastStr]) -> (Vec<u64>, Vec<u64>) {
+#[inline]
+fn check_language(language: &str, languages: &[String]) -> bool {
+    let language = language.to_lowercase();
+    languages.contains(&language)
+}
+
+#[inline]
+fn check_exclude(name: Option<&str>, exclude: &[String]) -> bool {
+    match name {
+        Some(name) => {
+            let name = name.to_lowercase();
+            !exclude.iter().any(|e| name.contains(e))
+        },
+        None => {
+            true
+        },
+    }
+}
+
+fn tracks<R: Read + Seek>(
+    mkv: MatroskaFile<R>,
+    languages: &[String],
+    exclude: &[String],
+) -> (Vec<u64>, Vec<u64>) {
 
     let mut audios = HashMap::new();
     let mut subtitles = HashMap::new();
 
     for track in mkv.tracks() {
         if let Some(language) = track.language_bcp47() {
-            if let Some(language) = languages.iter().find(|l| l.as_str() == language) {
-                if languages.contains(language) {
-                    match track.track_type() {
-                        TrackType::Audio => {
-                            audios.entry(language)
-                                .and_modify(|t| {
-                                    if less_audio(*t, track) {
-                                        dump("replace", track);
-                                        *t = track
-                                    } else {
-                                        dump("skip", track);
-                                    }
-                                })
-                                .or_insert_with(|| {
-                                    dump("insert", track);
-                                    track
-                                });
-                        }
-                        TrackType::Subtitle => {
-                            subtitles.entry(language)
-                                .and_modify(|t| {
-                                    if less_subtitle(*t, track) {
-                                        dump("replace", track);
-                                        *t = track
-                                    } else {
-                                        dump("skip", track);
-                                    }
-                                })
-                                .or_insert_with(|| {
-                                    dump("insert", track);
-                                    track
-                                });
-                        }
-                        _ => {
-                        }
+            if check_language(language, languages) && check_exclude(track.name(), exclude) {
+                match track.track_type() {
+                    TrackType::Audio => {
+                        audios.entry(language)
+                            .and_modify(|t| {
+                                if less_audio(*t, track) {
+                                    dump("replace", track);
+                                    *t = track
+                                } else {
+                                    dump("skip", track);
+                                }
+                            })
+                            .or_insert_with(|| {
+                                dump("insert", track);
+                                track
+                            });
+                    }
+                    TrackType::Subtitle => {
+                        subtitles.entry(language)
+                            .and_modify(|t| {
+                                if less_subtitle(*t, track) {
+                                    dump("replace", track);
+                                    *t = track
+                                } else {
+                                    dump("skip", track);
+                                }
+                            })
+                            .or_insert_with(|| {
+                                dump("insert", track);
+                                track
+                            });
+                    }
+                    _ => {
                     }
                 }
             }
@@ -218,34 +237,36 @@ fn tracks<R: Read + Seek>(mkv: MatroskaFile<R>, languages: &[FastStr]) -> (Vec<u
     (audios, subtitles)
 }
 
-#[inline]
-fn join<T: Display>(tracks: Vec<T>) -> String {
-    let mut text = String::with_capacity(tracks.len() * 3);
-    if !tracks.is_empty() {
-        for track in tracks {
-            write!(&mut text, "{},", track).unwrap();
-        }
-        text.truncate(text.len() - 1);
-    }
-    text
-}
-
-fn run(src_dir: &Path, dst_dir: &Path, languages: &[FastStr], pause: Duration, age: Duration) -> Result<(), MkvPeelError> {
+fn run(
+    src_dir: &Path,
+    dst_dir: &Path,
+    languages: &[String],
+    exclude: &[String],
+    pause: Duration,
+    age: Duration
+) -> Result<(), MkvPeelError> {
     info!("run, src: {}, dst: {}", src_dir.display(), dst_dir.display());
     let ext_mkv = OsStr::new("mkv");
     loop {
-        scan(src_dir, dst_dir, ext_mkv, languages, age)?;
+        scan(src_dir, dst_dir, ext_mkv, languages, exclude, age)?;
         info!("sleep: {} seconds", pause.as_secs());
         sleep(pause);
     }
 }
 
-fn scan(src_dir: &Path, dst_dir: &Path, ext_mkv: &OsStr, languages: &[FastStr], age: Duration) -> Result<(), MkvPeelError> {
+fn scan(
+    src_dir: &Path,
+    dst_dir: &Path,
+    ext_mkv: &OsStr,
+    languages: &[String],
+    exclude: &[String],
+    age: Duration
+) -> Result<(), MkvPeelError> {
     for src_dir_entry in read_dir(src_dir)? {
         let src_dir_entry = src_dir_entry?;
         let src_path = src_dir_entry.path();
         if src_path.is_dir() {
-            scan(&src_path, &dst_dir, ext_mkv, languages, age)?;
+            scan(&src_path, &dst_dir, ext_mkv, languages, exclude, age)?;
         } else if let Some(ext) = src_path.extension() {
             if ext == ext_mkv {
                 let src_meta = metadata(&src_path)?;
@@ -253,7 +274,7 @@ fn scan(src_dir: &Path, dst_dir: &Path, ext_mkv: &OsStr, languages: &[FastStr], 
                     if let Some(modified) = src_meta.modified().ok() {
                         if let Some(elapsed) = modified.elapsed().ok() {
                             if elapsed > age {
-                                land(&src_path, dst_dir, languages)?;
+                                land(&src_path, dst_dir, languages, exclude)?;
                             }
                         }
                     }
@@ -264,7 +285,12 @@ fn scan(src_dir: &Path, dst_dir: &Path, ext_mkv: &OsStr, languages: &[FastStr], 
     Ok(())
 }
 
-fn land(src_path: &Path, dst_dir: &Path, languages: &[FastStr]) -> Result<(), MkvPeelError> {
+fn land(
+    src_path: &Path,
+    dst_dir: &Path,
+    languages: &[String],
+    exclude: &[String],
+) -> Result<(), MkvPeelError> {
     info!("land, src: {}, dst: {}", src_path.display(), dst_dir.display());
     let src_file = src_path.file_name().ok_or(MkvPeelError::FileName(src_path.to_path_buf()))?;
     let src_file = src_file.as_bytes();
@@ -272,7 +298,7 @@ fn land(src_path: &Path, dst_dir: &Path, languages: &[FastStr]) -> Result<(), Mk
     let dst_file = rename(src_file)?;
     let dst_path = dst_dir.join(dst_file);
     if !dst_path.exists() {
-        peel(src_path, &dst_path, languages)?;
+        peel(src_path, &dst_path, languages, exclude)?;
     } else {
         info!("skip, exists: {}", dst_path.display());
     }
@@ -321,12 +347,17 @@ fn rename(src_mkv: &str) -> Result<String, std::fmt::Error> {
     Ok(dst_mkv)
 }
 
-fn peel(src_path: &Path, dst_path: &Path, languages: &[FastStr]) -> Result<(), MkvPeelError> {
+fn peel(
+    src_path: &Path,
+    dst_path: &Path,
+    languages: &[String],
+    exclude: &[String],
+) -> Result<(), MkvPeelError> {
     info!("peel, src: '{}', dst: '{}'", src_path.display(), dst_path.display());
     let mut file = File::open(src_path)?;
     match MatroskaFile::open(&mut file) {
         Ok(mkv) => {
-        let (audios, subtitles) = tracks(mkv, languages);
+        let (audios, subtitles) = tracks(mkv, languages, exclude);
         info!("peel, audios: {:?}, subtitles: {:?}", audios, subtitles);
         let mut mkvmerge = Command::new("mkvmerge")
             .arg("--output").arg(dst_path)
@@ -349,8 +380,9 @@ fn main() {
     info!("cmd: {:?}", cmd);
     let src_dir = Path::new(cmd.src.as_str());
     let dst_dir = Path::new(cmd.dst.as_str());
-    let languages = &cmd.languages;
+    let languages = to_lowercase(cmd.languages);
+    let exclude = to_lowercase(cmd.exclude);
     let pause = Duration::from(&cmd.pause);
     let age = Duration::from(&cmd.age);
-    log(run(src_dir, dst_dir, languages, pause, age));
+    log(run(src_dir, dst_dir, &languages, &exclude, pause, age));
 }
