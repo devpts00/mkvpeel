@@ -17,4 +17,7 @@ pub enum MkvPeelError {
 
     #[error("file name: {0}")]
     FileName(PathBuf),
+    
+    #[error("format: {0}")]
+    Format(#[from] std::fmt::Error),
 }

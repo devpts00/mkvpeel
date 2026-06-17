@@ -12,6 +12,7 @@ use std::process::Command;
 use std::str::{from_utf8, FromStr};
 use std::thread::sleep;
 use std::time::Duration;
+use chrono::{Datelike, Utc};
 use clap::Parser;
 use faststr::FastStr;
 use matroska_demuxer::{Audio, MatroskaFile, TrackEntry, TrackType};
@@ -229,38 +230,87 @@ fn join<T: Display>(tracks: Vec<T>) -> String {
     text
 }
 
-fn run(src_dir: &Path, dst_dir: &Path, languages: &[FastStr], pause: Option<Duration>) -> Result<(), MkvPeelError> {
+fn run(src_dir: &Path, dst_dir: &Path, languages: &[FastStr]) -> Result<(), MkvPeelError> {
+    info!("run, src: {}, dst: {}", src_dir.display(), dst_dir.display());
     let ext_mkv = OsStr::new("mkv");
     loop {
-        for src_dir_entry in read_dir(src_dir)? {
-            let src_dir_entry = src_dir_entry?;
-            let src_path = src_dir_entry.path();
-            if src_path.is_dir() {
-                run(&src_path, &dst_dir, languages, None)?;
-            } else if src_path.is_file() {
-                if let Some(ext) = src_path.extension() {
-                    if ext == ext_mkv {
-                        land(&src_path, dst_dir, languages)?;
-                        if let Some(pause) = pause {
-                            info!("pause: {} seconds", pause.as_secs());
-                            sleep(pause);
-                        }
-                    }
+        scan(src_dir, dst_dir, ext_mkv, languages)?;
+        sleep(Duration::from_secs(10));
+    }
+}
+
+fn scan(src_dir: &Path, dst_dir: &Path, ext_mkv: &OsStr, languages: &[FastStr]) -> Result<(), MkvPeelError> {
+    for src_dir_entry in read_dir(src_dir)? {
+        let src_dir_entry = src_dir_entry?;
+        let src_path = src_dir_entry.path();
+        if src_path.is_dir() {
+            scan(&src_path, &dst_dir, ext_mkv, languages)?;
+        } else if src_path.is_file() {
+            if let Some(ext) = src_path.extension() {
+                if ext == ext_mkv {
+                    land(&src_path, dst_dir, languages)?;
                 }
             }
         }
     }
+    Ok(())
 }
 
 fn land(src_path: &Path, dst_dir: &Path, languages: &[FastStr]) -> Result<(), MkvPeelError> {
+    info!("land, src: {}, dst: {}", src_path.display(), dst_dir.display());
     let src_file = src_path.file_name().ok_or(MkvPeelError::FileName(src_path.to_path_buf()))?;
     let src_file = src_file.as_bytes();
     let src_file = from_utf8(src_file)?;
-    let dst_path = dst_dir.join(src_file);
+    let dst_file = rename(src_file)?;
+    let dst_path = dst_dir.join(dst_file);
     if !dst_path.exists() {
         peel(src_path, &dst_path, languages)?;
+    } else {
+        info!("skip, exists: {}", dst_path.display());
     }
     Ok(())
+}
+
+fn rename(src_mkv: &str) -> Result<String, std::fmt::Error> {
+    let src = src_mkv.strip_suffix(".mkv").unwrap_or(src_mkv);
+    let mut dst_mkv = String::with_capacity(src.len() + 6);
+    let year_now = Utc::now().year() as u64;
+    let mut year_unlocked = false;
+    let mut year_in_progress = false;
+    let mut year_bracketed = false;
+    let mut year: u64 = 0;
+    for c in src.chars() {
+        if '0' <= c && c <= '9' && year_unlocked {
+            year_in_progress = true;
+            year = 10 * year + (c as u64 - '0' as u64);
+        } else {
+            if year_in_progress {
+                if 1900 <= year && year <= year_now {
+                    if !year_bracketed {
+                        dst_mkv.push('(');
+                    }
+                    write!(&mut dst_mkv, "{}", year)?;
+                    dst_mkv.push(')');
+                    break;
+                } else {
+                    write!(&mut dst_mkv, "{}", year)?;
+                    year_in_progress = false;
+                    year = 0;
+                }
+            }
+            year_unlocked = true;
+            if c == '.' {
+                year_bracketed = false;
+                dst_mkv.push(' ');
+            } else {
+                year_bracketed = c == '(';
+                dst_mkv.push(c);
+            }
+        }
+    }
+    dst_mkv.push_str(".mkv");
+    info!("rename: '{}' -> '{}'", src_mkv, dst_mkv);
+    Ok(dst_mkv)
 }
 
 fn peel(src_path: &Path, dst_path: &Path, languages: &[FastStr]) -> Result<(), MkvPeelError> {
@@ -287,5 +337,5 @@ fn main() {
     let src_dir = Path::new(cmd.src.as_str());
     let dst_dir = Path::new(cmd.dst.as_str());
     let languages = &cmd.languages;
-    log(run(src_dir, dst_dir, languages, Some(Duration::from_secs(10))));
+    log(run(src_dir, dst_dir, languages));
 }
