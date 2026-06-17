@@ -139,18 +139,51 @@ impl <'a> Ord for AudioDetails<'a> {
         self.partial_cmp(other).unwrap_or(Ordering::Equal)
     }
 }
-fn less_audio(a1: &TrackEntry, a2: &TrackEntry) -> bool {
-    let c1: Option<AudioCodec> = a1.codec_id().parse().ok();
-    let c2: Option<AudioCodec> = a2.codec_id().parse().ok();
-    let d1: Option<AudioDetails> = a1.audio().map(|a| a.into());
-    let d2: Option<AudioDetails> = a2.audio().map(|a| a.into());
-    (c1, d1) < (c2, d2)
+
+struct Track<'a> {
+    name: Option<String>,
+    entry: &'a TrackEntry,
 }
 
-fn less_subtitle(s1: &TrackEntry, s2: &TrackEntry) -> bool {
-    let c1: Option<SubtitleCodec> = s1.codec_id().parse().ok();
-    let c2: Option<SubtitleCodec> = s2.codec_id().parse().ok();
-    c1 < c2
+impl <'a> Track<'a> {
+    fn new(entry: &'a TrackEntry) -> Self {
+        let name = entry.name().map(|n| n.to_lowercase());
+        Self { name, entry }
+    }
+}
+
+#[inline]
+fn score_prefer(track: &Track, prefer: &[String]) -> usize {
+    match &track.name {
+        Some(name) => {
+            prefer.iter().enumerate()
+                .map(|(i, p)| { if name.contains(p) { i } else { 0 } })
+                .sum()
+        },
+        None => {
+            0
+        }
+    }
+}
+
+#[inline]
+fn less_audio(t1: &Track, t2: &Track, prefer: &[String]) -> bool {
+    let s1 = score_prefer(t1, prefer);
+    let s2 = score_prefer(t2, prefer);
+    let c1: Option<AudioCodec> = t1.entry.codec_id().parse().ok();
+    let c2: Option<AudioCodec> = t2.entry.codec_id().parse().ok();
+    let d1: Option<AudioDetails> = t1.entry.audio().map(|a| a.into());
+    let d2: Option<AudioDetails> = t2.entry.audio().map(|a| a.into());
+    (s1, c1, d1) < (s2, c2, d2)
+}
+
+#[inline]
+fn less_subtitle(t1: &Track, t2: &Track, prefer: &[String]) -> bool {
+    let s1 = score_prefer(t1, prefer);
+    let s2 = score_prefer(t1, prefer);
+    let c1: Option<SubtitleCodec> = t1.entry.codec_id().parse().ok();
+    let c2: Option<SubtitleCodec> = t2.entry.codec_id().parse().ok();
+    (s1, c1) < (s2, c2)
 }
 
 fn dump(verb: &'static str, track: &TrackEntry) {
@@ -181,48 +214,50 @@ fn check_exclude(name: Option<&str>, exclude: &[String]) -> bool {
     }
 }
 
+#[inline]
+fn collect_ids(tracks: HashMap<&str, Track>) -> Vec<u64> {
+    tracks.into_iter().map(|(_, track)| { track.entry.track_number().get() - 1 }).collect()
+}
+
+fn modify_or_insert<'a, 'b, F>(
+    tracks: &'b mut HashMap<&'a str, Track<'a>>,
+    language: &'a str,
+    entry: &'a TrackEntry,
+    prefer: &'a [String],
+    less: F
+) where F: Fn(&Track, &Track, &[String]) -> bool {
+    let track = Track::new(entry);
+    match tracks.get_mut(language) {
+        Some(t) => {
+            if less(t, &track, prefer) {
+                dump("replace", track.entry);
+                *t = track
+            }
+        }
+        None => {
+            dump("insert", track.entry);
+            tracks.insert(language, track);
+        }
+    }
+}
+
 fn tracks<R: Read + Seek>(
     mkv: MatroskaFile<R>,
     languages: &[String],
     exclude: &[String],
+    prefer: &[String],
 ) -> (Vec<u64>, Vec<u64>) {
-
-    let mut audios = HashMap::new();
-    let mut subtitles = HashMap::new();
-
-    for track in mkv.tracks() {
-        if let Some(language) = track.language_bcp47() {
-            if check_language(language, languages) && check_exclude(track.name(), exclude) {
-                match track.track_type() {
+    let mut audios: HashMap<&str, Track> = HashMap::new();
+    let mut subtitles: HashMap<&str, Track> = HashMap::new();
+    for entry in mkv.tracks() {
+        if let Some(language) = entry.language_bcp47() {
+            if check_language(language, languages) && check_exclude(entry.name(), exclude) {
+                match entry.track_type() {
                     TrackType::Audio => {
-                        audios.entry(language)
-                            .and_modify(|t| {
-                                if less_audio(*t, track) {
-                                    dump("replace", track);
-                                    *t = track
-                                } else {
-                                    dump("skip", track);
-                                }
-                            })
-                            .or_insert_with(|| {
-                                dump("insert", track);
-                                track
-                            });
+                        modify_or_insert(&mut audios, language, entry, prefer, less_audio);
                     }
                     TrackType::Subtitle => {
-                        subtitles.entry(language)
-                            .and_modify(|t| {
-                                if less_subtitle(*t, track) {
-                                    dump("replace", track);
-                                    *t = track
-                                } else {
-                                    dump("skip", track);
-                                }
-                            })
-                            .or_insert_with(|| {
-                                dump("insert", track);
-                                track
-                            });
+                        modify_or_insert(&mut subtitles, language, entry, prefer, less_subtitle);
                     }
                     _ => {
                     }
@@ -230,10 +265,8 @@ fn tracks<R: Read + Seek>(
             }
         }
     }
-
-    let audios = audios.into_iter().map(|(_, track)| { track.track_number().get() - 1 }).collect();
-    let subtitles = subtitles.into_iter().map(|(_, track)| { track.track_number().get() - 1 }).collect();
-
+    let audios = collect_ids(audios);
+    let subtitles = collect_ids(subtitles);
     (audios, subtitles)
 }
 
@@ -242,13 +275,14 @@ fn run(
     dst_dir: &Path,
     languages: &[String],
     exclude: &[String],
+    prefer: &[String],
     pause: Duration,
     age: Duration
 ) -> Result<(), MkvPeelError> {
     info!("run, src: {}, dst: {}", src_dir.display(), dst_dir.display());
     let ext_mkv = OsStr::new("mkv");
     loop {
-        scan(src_dir, dst_dir, ext_mkv, languages, exclude, age)?;
+        scan(src_dir, dst_dir, ext_mkv, languages, exclude, prefer, age)?;
         info!("sleep: {} seconds", pause.as_secs());
         sleep(pause);
     }
@@ -260,13 +294,14 @@ fn scan(
     ext_mkv: &OsStr,
     languages: &[String],
     exclude: &[String],
+    prefer: &[String],
     age: Duration
 ) -> Result<(), MkvPeelError> {
     for src_dir_entry in read_dir(src_dir)? {
         let src_dir_entry = src_dir_entry?;
         let src_path = src_dir_entry.path();
         if src_path.is_dir() {
-            scan(&src_path, &dst_dir, ext_mkv, languages, exclude, age)?;
+            scan(&src_path, &dst_dir, ext_mkv, languages, exclude, prefer, age)?;
         } else if let Some(ext) = src_path.extension() {
             if ext == ext_mkv {
                 let src_meta = metadata(&src_path)?;
@@ -274,7 +309,7 @@ fn scan(
                     if let Some(modified) = src_meta.modified().ok() {
                         if let Some(elapsed) = modified.elapsed().ok() {
                             if elapsed > age {
-                                land(&src_path, dst_dir, languages, exclude)?;
+                                land(&src_path, dst_dir, languages, exclude, prefer)?;
                             }
                         }
                     }
@@ -290,6 +325,7 @@ fn land(
     dst_dir: &Path,
     languages: &[String],
     exclude: &[String],
+    prefer: &[String],
 ) -> Result<(), MkvPeelError> {
     info!("land, src: {}, dst: {}", src_path.display(), dst_dir.display());
     let src_file = src_path.file_name().ok_or(MkvPeelError::FileName(src_path.to_path_buf()))?;
@@ -298,7 +334,7 @@ fn land(
     let dst_file = rename(src_file)?;
     let dst_path = dst_dir.join(dst_file);
     if !dst_path.exists() {
-        peel(src_path, &dst_path, languages, exclude)?;
+        peel(src_path, &dst_path, languages, exclude, prefer)?;
     } else {
         info!("skip, exists: {}", dst_path.display());
     }
@@ -352,12 +388,13 @@ fn peel(
     dst_path: &Path,
     languages: &[String],
     exclude: &[String],
+    prefer: &[String],
 ) -> Result<(), MkvPeelError> {
     info!("peel, src: '{}', dst: '{}'", src_path.display(), dst_path.display());
     let mut file = File::open(src_path)?;
     match MatroskaFile::open(&mut file) {
         Ok(mkv) => {
-        let (audios, subtitles) = tracks(mkv, languages, exclude);
+        let (audios, subtitles) = tracks(mkv, languages, exclude, prefer);
         info!("peel, audios: {:?}, subtitles: {:?}", audios, subtitles);
         let mut mkvmerge = Command::new("mkvmerge")
             .arg("--output").arg(dst_path)
@@ -382,7 +419,9 @@ fn main() {
     let dst_dir = Path::new(cmd.dst.as_str());
     let languages = to_lowercase(cmd.languages);
     let exclude = to_lowercase(cmd.exclude);
+    let mut prefer = to_lowercase(cmd.prefer);
+    prefer.reverse();
     let pause = Duration::from(&cmd.pause);
     let age = Duration::from(&cmd.age);
-    log(run(src_dir, dst_dir, &languages, &exclude, pause, age));
+    log(run(src_dir, dst_dir, &languages, &exclude, &prefer, pause, age));
 }

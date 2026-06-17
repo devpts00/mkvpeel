@@ -13,6 +13,8 @@ pub struct Cmd {
     pub languages: Vec<String>,
     #[arg(long, value_delimiter = ',', default_value = "commentary")]
     pub exclude: Vec<String>,
+    #[arg(long, value_delimiter = ',', default_value = "пучков")]
+    pub prefer: Vec<String>,
     #[arg(long, default_value = "60s", value_parser = duration_range_value_parse!(min: 10s, max: 10min))]
     pub pause: DurationHuman,
     #[arg(long, default_value = "60s", value_parser = duration_range_value_parse!(min: 10s, max: 60min))]
