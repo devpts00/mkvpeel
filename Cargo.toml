@@ -10,5 +10,7 @@ faststr = "0.2.34"
 byteorder = "1.5.0"
 chrono = "0.4.45"
 clap = { version = "4.6.0", features = ["derive"] }
+clap-duration = "0.1.11"
+duration-human = "0.1.10"
 thiserror = "2.0.18"
 matroska-demuxer = "0.7.0"

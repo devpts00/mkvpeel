@@ -230,12 +230,13 @@ fn join<T: Display>(tracks: Vec<T>) -> String {
     text
 }
 
-fn run(src_dir: &Path, dst_dir: &Path, languages: &[FastStr]) -> Result<(), MkvPeelError> {
+fn run(src_dir: &Path, dst_dir: &Path, languages: &[FastStr], pause: Duration) -> Result<(), MkvPeelError> {
     info!("run, src: {}, dst: {}", src_dir.display(), dst_dir.display());
     let ext_mkv = OsStr::new("mkv");
     loop {
         scan(src_dir, dst_dir, ext_mkv, languages)?;
-        sleep(Duration::from_secs(10));
+        info!("sleep: {} seconds", pause.as_secs());
+        sleep(pause);
     }
 }
 
@@ -337,5 +338,6 @@ fn main() {
     let src_dir = Path::new(cmd.src.as_str());
     let dst_dir = Path::new(cmd.dst.as_str());
     let languages = &cmd.languages;
-    log(run(src_dir, dst_dir, languages));
+    let pause = Duration::from(&cmd.pause);
+    log(run(src_dir, dst_dir, languages, pause));
 }
