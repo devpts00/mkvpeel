@@ -1,12 +1,17 @@
 use std::cmp::Ordering;
 use std::collections::HashMap;
+use std::ffi::OsStr;
 use std::fmt::{Display, Formatter};
-use std::fs::File;
+use std::fs::{read_dir, File};
 use std::io::{Read, Seek};
 use std::fmt::Write;
 use std::num::NonZeroU64;
+use std::os::unix::ffi::OsStrExt;
+use std::path::Path;
 use std::process::Command;
-use std::str::FromStr;
+use std::str::{from_utf8, FromStr};
+use std::thread::sleep;
+use std::time::Duration;
 use clap::Parser;
 use faststr::FastStr;
 use matroska_demuxer::{Audio, MatroskaFile, TrackEntry, TrackType};
@@ -158,8 +163,7 @@ fn dump(verb: &'static str, track: &TrackEntry) {
     info!("{}, track: {}, lang: {}, codec: {}, name: {}, channels: {:?}", verb, number - 1, language, codec, name, channels);
 }
 
-fn tracks<R>(mkv: MatroskaFile<R>, languages: &[FastStr]) -> (Vec<u64>, Vec<u64>)
-    where R: Read + Seek {
+fn tracks<R: Read + Seek>(mkv: MatroskaFile<R>, languages: &[FastStr]) -> (Vec<u64>, Vec<u64>) {
 
     let mut audios = HashMap::new();
     let mut subtitles = HashMap::new();
@@ -216,24 +220,61 @@ fn tracks<R>(mkv: MatroskaFile<R>, languages: &[FastStr]) -> (Vec<u64>, Vec<u64>
 #[inline]
 fn join<T: Display>(tracks: Vec<T>) -> String {
     let mut text = String::with_capacity(tracks.len() * 3);
-    for track in tracks {
-        write!(&mut text, "{},", track).unwrap();
+    if !tracks.is_empty() {
+        for track in tracks {
+            write!(&mut text, "{},", track).unwrap();
+        }
+        text.truncate(text.len() - 1);
     }
-    text.truncate(text.len() - 1);
     text
 }
 
-fn run(cmd: Cmd) -> Result<(), MkvPeelError> {
-    let mut file = File::open(cmd.src.as_str())?;
+fn run(src_dir: &Path, dst_dir: &Path, languages: &[FastStr], pause: Option<Duration>) -> Result<(), MkvPeelError> {
+    let ext_mkv = OsStr::new("mkv");
+    loop {
+        for src_dir_entry in read_dir(src_dir)? {
+            let src_dir_entry = src_dir_entry?;
+            let src_path = src_dir_entry.path();
+            if src_path.is_dir() {
+                run(&src_path, &dst_dir, languages, None)?;
+            } else if src_path.is_file() {
+                if let Some(ext) = src_path.extension() {
+                    if ext == ext_mkv {
+                        land(&src_path, dst_dir, languages)?;
+                        if let Some(pause) = pause {
+                            info!("pause: {} seconds", pause.as_secs());
+                            sleep(pause);
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+fn land(src_path: &Path, dst_dir: &Path, languages: &[FastStr]) -> Result<(), MkvPeelError> {
+    let src_file = src_path.file_name().ok_or(MkvPeelError::FileName(src_path.to_path_buf()))?;
+    let src_file = src_file.as_bytes();
+    let src_file = from_utf8(src_file)?;
+    let dst_path = dst_dir.join(src_file);
+    if !dst_path.exists() {
+        peel(src_path, &dst_path, languages)?;
+    }
+    Ok(())
+}
+
+fn peel(src_path: &Path, dst_path: &Path, languages: &[FastStr]) -> Result<(), MkvPeelError> {
+    info!("peel, src: '{}', dst: '{}'", src_path.display(), dst_path.display());
+    let mut file = File::open(src_path)?;
     let mkv = MatroskaFile::open(&mut file)?;
-    let (audios, subtitles) = tracks(mkv, cmd.languages.as_slice());
+    let (audios, subtitles) = tracks(mkv, languages);
     info!("audios: {:?}", audios);
     info!("subtitles: {:?}", subtitles);
     let mut mkvmerge = Command::new("mkvmerge")
-        .arg("--output").arg(cmd.dst.as_str())
+        .arg("--output").arg(dst_path)
         .arg("--audio-tracks").arg(join(audios))
         .arg("--subtitle-tracks").arg(join(subtitles))
-        .arg(cmd.src.as_str())
+        .arg(src_path)
         .spawn()?;
     mkvmerge.wait()?;
     Ok(())
@@ -243,5 +284,8 @@ fn main() {
     let _guard = init_tracing();
     let cmd = Cmd::parse();
     info!("cmd: {:?}", cmd);
-    log(run(cmd));
+    let src_dir = Path::new(cmd.src.as_str());
+    let dst_dir = Path::new(cmd.dst.as_str());
+    let languages = &cmd.languages;
+    log(run(src_dir, dst_dir, languages, Some(Duration::from_secs(10))));
 }
