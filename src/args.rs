@@ -12,8 +12,10 @@ pub struct Cmd {
     pub dst: FastStr,
     #[arg(long, value_delimiter = ',')]
     pub languages: Vec<FastStr>,
-    #[arg(long, default_value = "60s", value_parser = duration_range_value_parse!(min: 10s, max: 5min))]
+    #[arg(long, default_value = "60s", value_parser = duration_range_value_parse!(min: 10s, max: 10min))]
     pub pause: DurationHuman,
+    #[arg(long, default_value = "60s", value_parser = duration_range_value_parse!(min: 10s, max: 60min))]
+    pub age: DurationHuman,
 }
 
 #[derive(Subcommand, Debug)]

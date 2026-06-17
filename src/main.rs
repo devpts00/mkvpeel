@@ -2,7 +2,7 @@ use std::cmp::Ordering;
 use std::collections::HashMap;
 use std::ffi::OsStr;
 use std::fmt::{Display, Formatter};
-use std::fs::{read_dir, File};
+use std::fs::{metadata, read_dir, File};
 use std::io::{Read, Seek};
 use std::fmt::Write;
 use std::num::NonZeroU64;
@@ -17,7 +17,7 @@ use clap::Parser;
 use faststr::FastStr;
 use matroska_demuxer::{Audio, MatroskaFile, TrackEntry, TrackType};
 use thiserror::Error;
-use tracing::info;
+use tracing::{error, info};
 use crate::args::{Cmd};
 use crate::error::MkvPeelError;
 use crate::util::{init_tracing, log};
@@ -230,26 +230,33 @@ fn join<T: Display>(tracks: Vec<T>) -> String {
     text
 }
 
-fn run(src_dir: &Path, dst_dir: &Path, languages: &[FastStr], pause: Duration) -> Result<(), MkvPeelError> {
+fn run(src_dir: &Path, dst_dir: &Path, languages: &[FastStr], pause: Duration, age: Duration) -> Result<(), MkvPeelError> {
     info!("run, src: {}, dst: {}", src_dir.display(), dst_dir.display());
     let ext_mkv = OsStr::new("mkv");
     loop {
-        scan(src_dir, dst_dir, ext_mkv, languages)?;
+        scan(src_dir, dst_dir, ext_mkv, languages, age)?;
         info!("sleep: {} seconds", pause.as_secs());
         sleep(pause);
     }
 }
 
-fn scan(src_dir: &Path, dst_dir: &Path, ext_mkv: &OsStr, languages: &[FastStr]) -> Result<(), MkvPeelError> {
+fn scan(src_dir: &Path, dst_dir: &Path, ext_mkv: &OsStr, languages: &[FastStr], age: Duration) -> Result<(), MkvPeelError> {
     for src_dir_entry in read_dir(src_dir)? {
         let src_dir_entry = src_dir_entry?;
         let src_path = src_dir_entry.path();
         if src_path.is_dir() {
-            scan(&src_path, &dst_dir, ext_mkv, languages)?;
-        } else if src_path.is_file() {
-            if let Some(ext) = src_path.extension() {
-                if ext == ext_mkv {
-                    land(&src_path, dst_dir, languages)?;
+            scan(&src_path, &dst_dir, ext_mkv, languages, age)?;
+        } else if let Some(ext) = src_path.extension() {
+            if ext == ext_mkv {
+                let src_meta = metadata(&src_path)?;
+                if src_meta.is_file() {
+                    if let Some(modified) = src_meta.modified().ok() {
+                        if let Some(elapsed) = modified.elapsed().ok() {
+                            if elapsed > age {
+                                land(&src_path, dst_dir, languages)?;
+                            }
+                        }
+                    }
                 }
             }
         }
@@ -317,17 +324,22 @@ fn rename(src_mkv: &str) -> Result<String, std::fmt::Error> {
 fn peel(src_path: &Path, dst_path: &Path, languages: &[FastStr]) -> Result<(), MkvPeelError> {
     info!("peel, src: '{}', dst: '{}'", src_path.display(), dst_path.display());
     let mut file = File::open(src_path)?;
-    let mkv = MatroskaFile::open(&mut file)?;
-    let (audios, subtitles) = tracks(mkv, languages);
-    info!("audios: {:?}", audios);
-    info!("subtitles: {:?}", subtitles);
-    let mut mkvmerge = Command::new("mkvmerge")
-        .arg("--output").arg(dst_path)
-        .arg("--audio-tracks").arg(join(audios))
-        .arg("--subtitle-tracks").arg(join(subtitles))
-        .arg(src_path)
-        .spawn()?;
-    mkvmerge.wait()?;
+    match MatroskaFile::open(&mut file) {
+        Ok(mkv) => {
+        let (audios, subtitles) = tracks(mkv, languages);
+        info!("peel, audios: {:?}, subtitles: {:?}", audios, subtitles);
+        let mut mkvmerge = Command::new("mkvmerge")
+            .arg("--output").arg(dst_path)
+            .arg("--audio-tracks").arg(join(audios))
+            .arg("--subtitle-tracks").arg(join(subtitles))
+            .arg(src_path)
+            .spawn()?;
+        mkvmerge.wait()?;
+        }
+        Err(err) => {
+            error!("failed to read mkv file: '{}', probably it is not yet copied, error: {}", src_path.display(), err);
+        }
+    }
     Ok(())
 }
 
@@ -339,5 +351,6 @@ fn main() {
     let dst_dir = Path::new(cmd.dst.as_str());
     let languages = &cmd.languages;
     let pause = Duration::from(&cmd.pause);
-    log(run(src_dir, dst_dir, languages, pause));
+    let age = Duration::from(&cmd.age);
+    log(run(src_dir, dst_dir, languages, pause, age));
 }
