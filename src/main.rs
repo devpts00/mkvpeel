@@ -22,7 +22,7 @@ mod args;
 mod error;
 
 #[inline]
-fn value<'a, 'b>(t: &'a TrackEntry, f: &'b TrackField) -> Option<&'a str> {
+fn get_value<'a>(t: &'a TrackEntry, f: &TrackField) -> Option<&'a str> {
     match f {
         TrackField::Codec => Some(t.codec_id()),
         TrackField::Name => t.name(),
@@ -32,7 +32,7 @@ fn value<'a, 'b>(t: &'a TrackEntry, f: &'b TrackField) -> Option<&'a str> {
 #[inline]
 fn buff_one(e: &TrackEntry, b: &Buff, buff: &mut i16) {
     if e.track_type() == b.kind.0 {
-        if let Some(v) = value(e, &b.field) {
+        if let Some(v) = get_value(e, &b.field) {
             let v = v.to_lowercase();
             if v.contains(&b.value) {
                 *buff += b.buff;
@@ -67,7 +67,6 @@ fn check_language(language: &str, languages: &[String]) -> bool {
     let language = language.to_lowercase();
     languages.contains(&language)
 }
-
 
 #[inline]
 fn collect_ids(tracks: HashMap<&str, TrackBuff>) -> Vec<u64> {
