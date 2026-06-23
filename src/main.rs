@@ -33,8 +33,7 @@ fn get_value<'a>(t: &'a TrackEntry, f: &TrackField) -> Option<&'a str> {
 fn buff_one(e: &TrackEntry, b: &Buff, buff: &mut i16) {
     if e.track_type() == b.kind.0 {
         if let Some(v) = get_value(e, &b.field) {
-            let v = v.to_lowercase();
-            if v.contains(&b.value) {
+            if b.regex.is_match(v) {
                 *buff += b.buff;
             }
         }
@@ -49,7 +48,6 @@ fn buff_all<'a, 'b>(e: &'a TrackEntry, bs: &'b [Buff]) -> TrackBuff<'a> {
     }
     TrackBuff::new(e, buff)
 }
-
 
 #[inline]
 fn dump(verb: &'static str, track: &TrackBuff) {

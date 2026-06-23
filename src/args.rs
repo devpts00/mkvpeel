@@ -5,6 +5,7 @@ use clap::Parser;
 use clap_duration::duration_range_value_parse;
 use duration_human::{DurationHuman, DurationHumanValidator};
 use matroska_demuxer::TrackType;
+use regex::{Regex, RegexBuilder};
 use thiserror::Error;
 
 #[derive(Debug, Error)]
@@ -74,38 +75,41 @@ impl FromStr for TrackField {
 }
 
 #[derive(Debug, Error)]
-pub enum InvalidPreferError {
+pub enum InvalidBuffError {
     #[error("format")]
     Format,
-    #[error("{0}")]
+    #[error("token: {0}")]
     Token(#[from] InvalidTokenError),
-    #[error("{0}")]
+    #[error("parse: {0}")]
     Score(#[from] ParseIntError),
+    #[error("regex: {0}")]
+    Regex(#[from] regex::Error),
 }
 
 #[derive(Debug, Clone)]
 pub struct Buff {
     pub kind: TrackKind,
     pub field: TrackField,
-    pub value: String,
+    pub regex: Regex,
     pub buff: i16,
 }
 
 impl Buff {
-    fn new(track: TrackKind, field: TrackField, value: String, score: i16) -> Self {
-        Self { kind: track, field, value, buff: score }
+    fn new(track: TrackKind, field: TrackField, regex: Regex, score: i16) -> Self {
+        Self { kind: track, field, regex, buff: score }
     }
 }
 
 impl FromStr for Buff {
-    type Err = InvalidPreferError;
+    type Err = InvalidBuffError;
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         let mut split = s.split(":").into_iter();
-        let track: TrackKind = split.next().ok_or(InvalidPreferError::Format)?.parse()?;
-        let field: TrackField = split.next().ok_or(InvalidPreferError::Format)?.parse()?;
-        let value: String = split.next().ok_or(InvalidPreferError::Format)?.to_lowercase();
-        let score: i16 = split.next().ok_or(InvalidPreferError::Format)?.parse()?;
-        Ok(Buff::new(track, field, value, score))
+        let track: TrackKind = split.next().ok_or(InvalidBuffError::Format)?.parse()?;
+        let field: TrackField = split.next().ok_or(InvalidBuffError::Format)?.parse()?;
+        let regex = split.next().ok_or(InvalidBuffError::Format)?;
+        let regex = RegexBuilder::new(regex).case_insensitive(true).build()?;
+        let score: i16 = split.next().ok_or(InvalidBuffError::Format)?.parse()?;
+        Ok(Buff::new(track, field, regex, score))
     }
 }
 
