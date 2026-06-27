@@ -6,6 +6,7 @@ services:
 #      - USER_ID=1026
 #      - GROUP_ID=100
       - TZ=Europe/Moscow
+      - RUST_LOG=info,mkvpeel=info
     volumes:
       - ./target/x86_64-unknown-linux-musl:/target
       - ./in:/downloads:ro
@@ -16,6 +17,23 @@ services:
 #      - /volume2/movies2:/movies2:rw
 #    working_dir: "/"
 #    restart: unless-stopped
-    entrypoint: ["/target/debug/mkvpeel", "--src=/downloads", "--dst=/movies2", "--languages=en,ru"]
-#    entrypoint: ["ldd", "/target/debug/mkvpeel"]
-#    entrypoint: ["ls", "-l", "/target/debug"]
+    entrypoint:
+      - /target/release/mkvpeel
+      - --src=/downloads
+      - --dst=/movies2
+      - --languages=en,ru
+      - --buff=a:c:A_TRUEHD:1000
+      - --buff=a:c:A_EAC3:100
+      - --buff=a:c:A_AC3:10
+      - --buff=a:c:A_DTS:-10
+      - --buff=a:n:пучков:1000
+      - --buff=a:n:comment:-1000
+      - --buff=a:n:коммент:-1000
+      - --buff=s:c:S_TEXT/UTF8:100
+      - --buff=s:c:S_HDMV/PGS:10
+      - --buff=s:n:пучков:1000
+      - --buff=s:n:full:100
+      - --buff=s:n:sdh:-100
+      - --buff=s:n:форс:-100
+      - --buff=s:n:comment:-1000
+      - --buff=s:n:коммент:-1000

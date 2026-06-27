@@ -54,5 +54,11 @@ run-release: build-release
 		--buff s:n:comment:-1000 \
 		--buff s:n:коммент:-1000
 
+pull-docker:
+	docker compose pull
+
+run-docker: build-release
+	docker compose up
+
 #run-release: build-release
 #	RUST_LOG=info,mkvpeel=info ./target/release/mkvpeel --src="./dat/Fallen.mkv" --dst=./dat/F.mkv --languages=en,ru
