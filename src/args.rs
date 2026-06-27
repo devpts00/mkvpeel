@@ -91,12 +91,12 @@ pub struct Buff {
     pub kind: TrackKind,
     pub field: TrackField,
     pub regex: Regex,
-    pub buff: i16,
+    pub value: i16,
 }
 
 impl Buff {
-    fn new(track: TrackKind, field: TrackField, regex: Regex, score: i16) -> Self {
-        Self { kind: track, field, regex, buff: score }
+    fn new(kind: TrackKind, field: TrackField, regex: Regex, value: i16) -> Self {
+        Self { kind, field, regex, value }
     }
 }
 
