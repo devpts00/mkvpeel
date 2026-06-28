@@ -12,10 +12,11 @@ use std::time::Duration;
 use chrono::{Datelike, Utc};
 use clap::Parser;
 use matroska_demuxer::{MatroskaFile, TrackEntry, TrackType};
+use regex::Regex;
 use tracing::{debug, error, info, trace};
 use crate::args::{Buff, Cmd, TrackField};
 use crate::error::MkvPeelError;
-use crate::util::{init_tracing, join, log, to_lowercase};
+use crate::util::{init_tracing, join, log};
 
 mod util;
 mod args;
@@ -53,33 +54,35 @@ fn buff_all<'a, 'b>(e: &'a TrackEntry, bs: &'b [Buff]) -> TrackBuff<'a> {
 }
 
 #[inline]
-fn extract<'a>(track: &'a TrackBuff) -> (u64, &'a str, &'a str, &'a str, i16) {
-    let entry = track.entry;
+fn extract_track_entry(entry: &TrackEntry) -> (u64, TrackType, &str, &str, &str) {
     let number = entry.track_number().get();
+    let kind = entry.track_type();
     let language = entry.language_bcp47().unwrap_or("n/a");
     let codec = entry.codec_id();
     let name = entry.name().unwrap_or("n/a");
-    let buff = track.buff;
-    (number, language, codec, name, buff)
+    (number, kind, language, codec, name)
 }
 
 #[inline]
-fn debug_track(verb: &'static str, track: &TrackBuff) {
-    let (number, language, codec, name, buff) = extract(track);
-    debug!("{}, track: {}, lang: {}, codec: {}, name: {}, buff: {}", verb, number - 1, language, codec, name, buff);
+fn debug_track_entry(verb: &'static str, entry: &TrackEntry, buff: i16) {
+    let (number, kind, language, codec, name) = extract_track_entry(entry);
+    debug!("{}, track: {}, kind: {:?}, lang: {}, codec: {}, name: {}, buff: {}", verb, number - 1, kind, language, codec, name, buff);
 }
 
 #[inline]
-fn check_language(language: &str, languages: &[String]) -> bool {
-    let language = language.to_lowercase();
-    languages.contains(&language)
+fn check_language(language: &str, languages: &[Regex]) -> bool {
+    languages.iter().any(|r| {
+        r.find(language)
+            .map(|m| m.start() == 0)
+            .unwrap_or(false)
+    })
 }
 
 #[inline]
-fn collect_ids(kind: &'static str, tracks: HashMap<&str, TrackBuff>) -> Vec<u64> {
+fn collect_ids(tracks: HashMap<&str, TrackBuff>) -> Vec<u64> {
     tracks.into_iter().map(|(_, track)| {
-        let (number, language, codec, name, _) = extract(&track);
-        info!("{}, track: {}, lang: {}, codec: {}, name: {}", kind, number, language, codec, name);
+        let (number, kind, language, codec, name) = extract_track_entry(&track.entry);
+        info!("{:?}, track: {}, lang: {}, codec: {}, name: {}", kind, number, language, codec, name);
         number - 1
     }).collect()
 }
@@ -99,12 +102,12 @@ fn modify_or_insert<'a, 'b>(tracks: &'b mut HashMap<&'a str, TrackBuff<'a>>, lan
     match tracks.get_mut(language) {
         Some(t) => {
             if t.buff < track.buff {
-                debug_track("replace", &track);
+                debug_track_entry("replace", &track.entry, track.buff);
                 *t = track
             }
         }
         None => {
-            debug_track("insert", &track);
+            debug_track_entry("insert", &track.entry, track.buff);
             tracks.insert(language, track);
         }
     }
@@ -112,12 +115,13 @@ fn modify_or_insert<'a, 'b>(tracks: &'b mut HashMap<&'a str, TrackBuff<'a>>, lan
 
 fn tracks<R: Read + Seek>(
     mkv: MatroskaFile<R>,
-    languages: &[String],
+    languages: &[Regex],
     buffs: &[Buff],
 ) -> (Vec<u64>, Vec<u64>) {
     let mut audios: HashMap<&str, TrackBuff> = HashMap::new();
     let mut subtitles: HashMap<&str, TrackBuff> = HashMap::new();
     for entry in mkv.tracks() {
+        debug_track_entry("found", &entry, 0);
         if let Some(language) = entry.language_bcp47() {
             if check_language(language, languages) {
                 match entry.track_type() {
@@ -133,15 +137,15 @@ fn tracks<R: Read + Seek>(
             }
         }
     }
-    let audios = collect_ids("audio", audios);
-    let subtitles = collect_ids("subtitles", subtitles);
+    let audios = collect_ids(audios);
+    let subtitles = collect_ids(subtitles);
     (audios, subtitles)
 }
 
 fn run(
     src_dir: &Path,
     dst_dir: &Path,
-    languages: &[String],
+    languages: &[Regex],
     buff: &[Buff],
     pause: Duration,
     age: Duration
@@ -159,7 +163,7 @@ fn scan(
     src_dir: &Path,
     dst_dir: &Path,
     ext_mkv: &OsStr,
-    languages: &[String],
+    languages: &[Regex],
     buff: &[Buff],
     age: Duration
 ) -> Result<(), MkvPeelError> {
@@ -190,7 +194,7 @@ fn scan(
 fn land(
     src_path: &Path,
     dst_dir: &Path,
-    languages: &[String],
+    languages: &[Regex],
     buff: &[Buff],
 ) -> Result<(), MkvPeelError> {
     let src_file = src_path.file_name().ok_or(MkvPeelError::FileName(src_path.to_path_buf()))?;
@@ -254,13 +258,14 @@ fn rename(src_mkv: &str) -> Result<String, std::fmt::Error> {
 fn peel(
     src_path: &Path,
     dst_path: &Path,
-    languages: &[String],
+    languages: &[Regex],
     buffs: &[Buff],
 ) -> Result<(), MkvPeelError> {
     info!("peel, src: '{}', dst: '{}'", src_path.display(), dst_path.display());
     let mut file = File::open(src_path)?;
     match MatroskaFile::open(&mut file) {
         Ok(mkv) => {
+            // TODO: consider adding track order
             let (audios, subtitles) = tracks(mkv, languages, buffs);
             let mut mkvmerge = Command::new("mkvmerge");
             mkvmerge.arg("--output").arg(dst_path);
@@ -287,7 +292,7 @@ fn main() {
     debug!("cmd: {:?}", cmd);
     let src_dir = Path::new(cmd.src.as_str());
     let dst_dir = Path::new(cmd.dst.as_str());
-    let languages = to_lowercase(cmd.languages);
+    let languages = cmd.languages;
     let buff = cmd.buff;
     let pause = Duration::from(&cmd.pause);
     let age = Duration::from(&cmd.age);

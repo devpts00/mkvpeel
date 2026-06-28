@@ -49,8 +49,3 @@ pub fn join<T: Display>(tracks: Vec<T>) -> String {
     }
     text
 }
-
-#[inline]
-pub fn to_lowercase(ss: Vec<String>) -> Vec<String> {
-    ss.into_iter().map(|s| s.to_lowercase()).collect()
-}

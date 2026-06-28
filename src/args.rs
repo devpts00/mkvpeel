@@ -121,7 +121,7 @@ pub struct Cmd {
     #[arg(long, short)]
     pub dst: String,
     #[arg(long, value_delimiter = ',')]
-    pub languages: Vec<String>,
+    pub languages: Vec<Regex>,
     #[arg(long, short)]
     pub buff: Vec<Buff>,
     #[arg(long, default_value = "60s", value_parser = duration_range_value_parse!(min: 10s, max: 10min))]
