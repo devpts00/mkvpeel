@@ -211,9 +211,11 @@ fn rename(src_mkv: &str) -> Result<String, std::fmt::Error> {
     let mut year_unlocked = false;
     let mut year_in_progress = false;
     let mut year_bracketed = false;
+    let mut whitespace = false;
     let mut year: u64 = 0;
     for c in src.chars() {
         if '0' <= c && c <= '9' && year_unlocked {
+            whitespace = false;
             year_in_progress = true;
             year = 10 * year + (c as u64 - '0' as u64);
         } else {
@@ -232,11 +234,15 @@ fn rename(src_mkv: &str) -> Result<String, std::fmt::Error> {
                 }
             }
             year_unlocked = true;
-            if c == '.' {
+            if c == '.' || c.is_whitespace() {
                 year_bracketed = false;
-                dst_mkv.push(' ');
+                if !whitespace {
+                    dst_mkv.push(' ');
+                    whitespace = true;
+                }
             } else {
                 year_bracketed = c == '(';
+                whitespace = false;
                 dst_mkv.push(c);
             }
         }
