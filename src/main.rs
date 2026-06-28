@@ -256,13 +256,17 @@ fn peel(
     match MatroskaFile::open(&mut file) {
         Ok(mkv) => {
             let (audios, subtitles) = tracks(mkv, languages, buffs);
-            let mut mkvmerge = Command::new("mkvmerge")
-                .arg("--output").arg(dst_path)
-                .arg("--audio-tracks").arg(join(audios))
-                .arg("--subtitle-tracks").arg(join(subtitles))
-                .arg(src_path)
-                .spawn()?;
-            mkvmerge.wait()?;
+            let mut mkvmerge = Command::new("mkvmerge");
+            mkvmerge.arg("--output").arg(dst_path);
+            if !audios.is_empty() {
+                mkvmerge.arg("--audio-tracks").arg(join(audios));
+            }
+            if !subtitles.is_empty() {
+                mkvmerge.arg("--subtitle-tracks").arg(join(subtitles));
+            }
+            mkvmerge.arg(src_path);
+            debug!("run: {:?}", mkvmerge);
+            mkvmerge.spawn()?.wait()?;
         }
         Err(err) => {
             error!("failed to read mkv file: '{}', probably it is not yet copied, error: {}", src_path.display(), err);
