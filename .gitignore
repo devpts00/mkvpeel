@@ -14,5 +14,5 @@ target
 
 .idea/
 
-dat/
-*.mkv
+in/
+out/

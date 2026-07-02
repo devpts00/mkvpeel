@@ -1,7 +1,7 @@
 use std::error::Error;
 use std::fmt::{Debug, Display, Write};
 use tracing::level_filters::LevelFilter;
-use tracing::{debug, error};
+use tracing::{debug, error, warn};
 use tracing_subscriber::fmt::format::FmtSpan;
 use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::util::SubscriberInitExt;
@@ -48,4 +48,35 @@ pub fn join<T: Display>(tracks: Vec<T>) -> String {
         text.truncate(text.len() - 1);
     }
     text
+}
+
+pub trait ToOption<T> {
+    fn ok_warn(self, ctx: &'static str) -> Option<T>;
+}
+
+impl <T, E: Display> ToOption<T> for Result<T, E> {
+    #[inline]
+    fn ok_warn(self, ctx: &'static str) -> Option<T> {
+        match self {
+            Ok(val) => {
+                Some(val)
+            }
+            Err(err) => {
+                warn!("ctx: {}", err);
+                None
+            }
+        }
+    }
+}
+
+pub fn ok_warn<T, E: Display>(r: Result<T, E>) -> Option<T> {
+    match r {
+        Ok(v) => {
+            Some(v)
+        }
+        Err(e) => {
+            warn!("{}", e);
+            None
+        }
+    }
 }

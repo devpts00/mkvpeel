@@ -4,9 +4,9 @@ use std::str::FromStr;
 use clap::Parser;
 use clap_duration::duration_range_value_parse;
 use duration_human::{DurationHuman, DurationHumanValidator};
-use matroska_demuxer::TrackType;
 use regex::{Regex, RegexBuilder};
 use thiserror::Error;
+use crate::peel::{TrackBuff, TrackField, TrackKind};
 
 #[derive(Debug, Error)]
 pub struct InvalidTokenError {
@@ -27,40 +27,15 @@ impl Display for InvalidTokenError {
     }
 }
 
-#[derive(Debug, Clone)]
-pub struct TrackKind(pub TrackType);
-
-impl Display for TrackKind {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        match self.0 {
-            TrackType::Unknown => write!(f, "unknown"),
-            TrackType::Video => write!(f, "video"),
-            TrackType::Audio => write!(f, "audio"),
-            TrackType::Complex => write!(f, "complex"),
-            TrackType::Logo => write!(f, "logo"),
-            TrackType::Subtitle => write!(f, "subtitle"),
-            TrackType::Buttons => write!(f, "buttons"),
-            TrackType::Control => write!(f, "control"),
-            TrackType::Metadata => write!(f, "metadata"),
-        }
-    }
-}
-
 impl FromStr for TrackKind {
     type Err = InvalidTokenError;
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s {
-            "a" => Ok(Self(TrackType::Audio)),
-            "s" => Ok(Self(TrackType::Subtitle)),
+            "a" => Ok(TrackKind::Audio),
+            "s" => Ok(TrackKind::Subtitles),
             t => Err(InvalidTokenError::new("track", t))
         }
     }
-}
-
-#[derive(Debug, Clone)]
-pub enum TrackField {
-    Codec,
-    Name
 }
 
 impl FromStr for TrackField {
@@ -86,21 +61,7 @@ pub enum InvalidBuffError {
     Regex(#[from] regex::Error),
 }
 
-#[derive(Debug, Clone)]
-pub struct Buff {
-    pub kind: TrackKind,
-    pub field: TrackField,
-    pub regex: Regex,
-    pub value: i16,
-}
-
-impl Buff {
-    fn new(kind: TrackKind, field: TrackField, regex: Regex, value: i16) -> Self {
-        Self { kind, field, regex, value }
-    }
-}
-
-impl FromStr for Buff {
+impl FromStr for TrackBuff {
     type Err = InvalidBuffError;
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         let mut split = s.split(":").into_iter();
@@ -109,7 +70,7 @@ impl FromStr for Buff {
         let regex = split.next().ok_or(InvalidBuffError::Format)?;
         let regex = RegexBuilder::new(regex).case_insensitive(true).build()?;
         let score: i16 = split.next().ok_or(InvalidBuffError::Format)?.parse()?;
-        Ok(Buff::new(track, field, regex, score))
+        Ok(TrackBuff::new(track, field, regex, score))
     }
 }
 
@@ -123,7 +84,7 @@ pub struct Cmd {
     #[arg(long, value_delimiter = ',')]
     pub languages: Vec<Regex>,
     #[arg(long, short)]
-    pub buff: Vec<Buff>,
+    pub buff: Vec<TrackBuff>,
     #[arg(long, default_value = "60s", value_parser = duration_range_value_parse!(min: 10s, max: 10min))]
     pub pause: DurationHuman,
     #[arg(long, default_value = "60s", value_parser = duration_range_value_parse!(min: 10s, max: 60min))]

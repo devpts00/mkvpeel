@@ -1,4 +1,7 @@
+use std::ffi::OsString;
 use std::path::PathBuf;
+use bdinfo_rs_core::error::BdError;
+use matroska_demuxer::DemuxError;
 use thiserror::Error;
 
 #[derive(Debug, Error)]
@@ -6,8 +9,14 @@ pub enum MkvPeelError {
     #[error("io: {0}")]
     Io(#[from] std::io::Error),
 
+    #[error("time: {0}")]
+    Time(#[from] std::time::SystemTimeError),
+
     #[error("mkv: {0}")]
-    Mkv(#[from] matroska_demuxer::DemuxError),
+    Mkv(#[from] DemuxError),
+
+    #[error("bdmv: {0}")]
+    Bdmv(#[from] BdError),
 
     #[error("utf8: {0}")]
     Utf8(#[from] std::str::Utf8Error),
@@ -17,7 +26,8 @@ pub enum MkvPeelError {
 
     #[error("file name: {0}")]
     FileName(PathBuf),
-    
+
     #[error("format: {0}")]
     Format(#[from] std::fmt::Error),
+
 }
