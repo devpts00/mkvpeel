@@ -7,18 +7,16 @@ use regex::Regex;
 use tracing::{debug, info, warn};
 use crate::args::Cmd;
 use crate::bdmv::Bdmv;
-use crate::common::{extract_name_without_ext, get_min_age, make_pretty_name, opt_get_age_ext};
 use crate::error::MkvPeelError;
 use crate::mkv::Mkv;
 use crate::peel::{MkvPeel, TrackBuff};
-use crate::util::{init_tracing, log, ok_warn, ToOption};
+use crate::util::{init_tracing, log, ToOption, extract_name_without_ext, get_min_age, make_pretty_name};
 
 mod util;
 mod args;
 mod error;
 pub mod bdmv;
 pub mod mkv;
-pub mod common;
 pub mod peel;
 
 #[inline]
@@ -96,7 +94,7 @@ fn main() {
 
     let cmd = Cmd::parse();
     debug!("cmd: {:?}", cmd);
-    let peels: Vec<Box<dyn MkvPeel>> = vec![Box::new(Mkv), Box::new(Bdmv)];
+    let peels: Vec<Box<dyn MkvPeel>> = vec!(Box::new(Mkv), Box::new(Bdmv));
     let src_dir = Path::new(cmd.src.as_str());
     let dst_dir = Path::new(cmd.dst.as_str());
     let languages = cmd.languages;
