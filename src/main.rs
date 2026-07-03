@@ -1,4 +1,4 @@
-use std::fs::{read_dir, File};
+use std::fs::{read_dir};
 use std::path::{Path, PathBuf};
 use std::thread::sleep;
 use std::time::Duration;

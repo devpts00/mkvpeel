@@ -1,4 +1,3 @@
-use std::ffi::OsString;
 use std::path::PathBuf;
 use bdinfo_rs_core::error::BdError;
 use matroska_demuxer::DemuxError;

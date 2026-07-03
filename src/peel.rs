@@ -137,7 +137,7 @@ pub fn tracks<T: Track>(tracks: &[T], langs: &[Regex], buffs: &[TrackBuff]) -> (
             }
         }
     }
-    (vec!(), vec!())
+    (collect_ids(audios), collect_ids(subtitles))
 }
 
 pub trait MkvPeel {
