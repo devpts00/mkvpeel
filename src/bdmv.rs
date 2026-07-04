@@ -1,27 +1,17 @@
+use std::io::ErrorKind;
 use std::path::Path;
+use std::process::Command;
 use std::time::Duration;
 use bdinfo_rs_core::bdrom::disc::{BdRom, PlaylistSummary, StreamSummary};
 use bdinfo_rs_core::stream::TsStreamType;
 use bdinfo_rs_core::vfs::fs::FsDir;
 use humantime::{format_duration, FormattedDuration};
-use matroska_demuxer::TrackType;
+use isolang::Language;
 use regex::Regex;
-use tracing::info;
+use tracing::{debug, info, warn};
 use crate::error::MkvPeelError;
-use crate::peel::{MkvPeel, TrackBuff};
-
-pub struct Bdmv;
-
-
-impl MkvPeel for Bdmv {
-    fn probe(&self, path: &Path) -> Result<bool, MkvPeelError> {
-        path.join("BDMV").metadata()?;
-        Ok(true)
-    }
-    fn peel(&self, src: &Path, dst: &Path, languages: &[Regex], buffs: &[TrackBuff]) -> Result<(), MkvPeelError> {
-        todo!()
-    }
-}
+use crate::peel::{tracks, MkvPeel, Track, TrackBuff, TrackField, TrackKind};
+use crate::util::{join, primary_lang};
 
 #[inline]
 fn format_secs(seconds: f64) -> FormattedDuration {
@@ -36,58 +26,36 @@ fn check_duration(pls: &PlaylistSummary) -> bool {
     min <= secs && secs <= max
 }
 
-#[derive(Debug)]
-struct MkvStreamSummary {
-    kind: TrackType,
-    codec: &'static str,
-    language: String
-}
-
-impl TryFrom<StreamSummary> for MkvStreamSummary {
-    type Error = ();
-    fn try_from(value: StreamSummary) -> Result<Self, Self::Error> {
-        todo!()
-    }
-}
-
 #[inline]
-fn ts_to_mkv(kind: TsStreamType) -> Option<(TrackType, &'static str)> {
+fn video_audio(kind: TsStreamType) -> (bool, bool) {
     match kind {
-        TsStreamType::Unknown => None,
-        TsStreamType::Mpeg1Video => Some((TrackType::Video, "V_MPEG1")),
-        TsStreamType::Mpeg2Video => Some((TrackType::Video, "V_MPEG2")),
-        TsStreamType::AvcVideo => Some((TrackType::Video, "V_MPEG4/ISO/AVC")),
-        TsStreamType::MvcVideo => Some((TrackType::Video, "V_MPEG4/ISO/AVC")),
-        TsStreamType::HevcVideo => Some((TrackType::Video, "V_MPEGH/ISO/HEVC")),
-        TsStreamType::Vc1Video => Some((TrackType::Video, "V_MS/VFW/FOURCC")),
-        TsStreamType::Mpeg1Audio => Some((TrackType::Audio, "A_MPEG/L1")),
-        TsStreamType::Mpeg2Audio => Some((TrackType::Audio, "A_MPEG/L2")),
-        TsStreamType::Mpeg2AacAudio => Some((TrackType::Audio, "A_AAC/MPEG2")),
-        TsStreamType::Mpeg4AacAudio => Some((TrackType::Audio, "A_AAC/MPEG4")),
-        TsStreamType::LpcmAudio => Some((TrackType::Audio, "A_PCM")),
-        TsStreamType::Ac3Audio => Some((TrackType::Audio, "A_AC3")),
-        TsStreamType::Ac3PlusAudio => Some((TrackType::Audio, "A_EAC3")),
-        TsStreamType::Ac3PlusSecondaryAudio => Some((TrackType::Audio, "A_EAC3")),
-        TsStreamType::Ac3TrueHdAudio => Some((TrackType::Audio, "A_TRUEHD")),
-        TsStreamType::DtsAudio => Some((TrackType::Audio, "A_DTS")),
-        TsStreamType::DtsHdAudio => Some((TrackType::Audio, "A_DTS")),
-        TsStreamType::DtsHdSecondaryAudio => Some((TrackType::Audio, "A_DTS")),
-        TsStreamType::DtsHdMasterAudio => Some((TrackType::Audio, "A_DTS")),
-        TsStreamType::PresentationGraphics => Some((TrackType::Subtitle, "S_HDMV/PGS")),
-        TsStreamType::InteractiveGraphics => None,
-        TsStreamType::Subtitle => Some((TrackType::Subtitle, "S_TEXT/UTF8")),
+        TsStreamType::Mpeg1Video => (true, false),
+        TsStreamType::Mpeg2Video => (true, false),
+        TsStreamType::AvcVideo => (true, false),
+        TsStreamType::MvcVideo => (true, false),
+        TsStreamType::HevcVideo => (true, false),
+        TsStreamType::Vc1Video => (true, false),
+        TsStreamType::Mpeg1Audio => (false, true),
+        TsStreamType::Mpeg2Audio => (false, true),
+        TsStreamType::Mpeg2AacAudio => (false, true),
+        TsStreamType::Mpeg4AacAudio => (false, true),
+        TsStreamType::LpcmAudio => (false, true),
+        TsStreamType::Ac3Audio => (false, true),
+        TsStreamType::Ac3PlusAudio => (false, true),
+        TsStreamType::Ac3PlusSecondaryAudio => (false, true),
+        TsStreamType::Ac3TrueHdAudio => (false, true),
+        TsStreamType::DtsAudio => (false, true),
+        TsStreamType::DtsHdAudio => (false, true),
+        TsStreamType::DtsHdSecondaryAudio => (false, true),
+        TsStreamType::DtsHdMasterAudio => (false, true),
+        _ => (false, false),
     }
 }
 
 #[inline]
 fn check_video_audio(pls: &PlaylistSummary) -> bool {
     pls.streams.iter()
-        .filter_map(|s| ts_to_mkv(s.stream_type))
-        .map(|(kind, _)| match kind {
-            TrackType::Video => (false, true),
-            TrackType::Audio => (true, false),
-            _ => (false, false)
-        })
+        .map(|s| video_audio(s.stream_type) )
         .reduce(|(a1, v1), (a2, v2)| (a1 || a2, v1 || v2))
         .map(|(a, v)| a && v)
         .unwrap_or(false)
@@ -100,14 +68,108 @@ fn find_best_playlist(playlists: &[PlaylistSummary]) -> Option<&PlaylistSummary>
         .max_by_key(|pls| pls.streams.len())
 }
 
-pub fn bdmv(src_dir: &Path) -> Result<(), MkvPeelError> {
-    let fsd = FsDir::new(src_dir);
-    let disk = BdRom::open(&fsd, false)?;
-    if let Some(pls) = find_best_playlist(&disk.playlists) {
-        info!("playlist, name: {}, duration: {}", pls.name, format_secs(pls.total_length));
-        for stream in &pls.streams {
-            info!("    stream, kind: {:?}, language: {}, codec: {}", stream.stream_type, stream.language_code, stream.codec_short_name);
+impl Track for StreamSummary {
+    fn number(&self) -> Option<u16> {
+        None
+    }
+    fn kind(&self) -> Option<TrackKind> {
+        match self.stream_type {
+            TsStreamType::Mpeg1Audio => Some(TrackKind::Audio),
+            TsStreamType::Mpeg2Audio => Some(TrackKind::Audio),
+            TsStreamType::Mpeg2AacAudio => Some(TrackKind::Audio),
+            TsStreamType::Mpeg4AacAudio => Some(TrackKind::Audio),
+            TsStreamType::LpcmAudio => Some(TrackKind::Audio),
+            TsStreamType::Ac3Audio => Some(TrackKind::Audio),
+            TsStreamType::Ac3PlusAudio => Some(TrackKind::Audio),
+            TsStreamType::Ac3PlusSecondaryAudio => Some(TrackKind::Audio),
+            TsStreamType::Ac3TrueHdAudio => Some(TrackKind::Audio),
+            TsStreamType::DtsAudio => Some(TrackKind::Audio),
+            TsStreamType::DtsHdAudio => Some(TrackKind::Audio),
+            TsStreamType::DtsHdSecondaryAudio => Some(TrackKind::Audio),
+            TsStreamType::DtsHdMasterAudio => Some(TrackKind::Audio),
+            TsStreamType::PresentationGraphics => Some(TrackKind::Subtitles),
+            TsStreamType::Subtitle => Some(TrackKind::Subtitles),
+            _ => None
         }
     }
-    Ok(())
+    fn lang(&self) -> Option<Language> {
+        primary_lang(self.language_code.as_str())
+    }
+    fn field(&self, field: TrackField) -> Option<&str> {
+        match field {
+            TrackField::Codec => {
+                match self.stream_type {
+                    TsStreamType::Mpeg1Audio => Some("A_MPEG/L1"),
+                    TsStreamType::Mpeg2Audio => Some("A_MPEG/L2"),
+                    TsStreamType::Mpeg2AacAudio => Some("A_AAC/MPEG2"),
+                    TsStreamType::Mpeg4AacAudio => Some("A_AAC/MPEG4"),
+                    TsStreamType::LpcmAudio => Some("A_PCM"),
+                    TsStreamType::Ac3Audio => Some("A_AC3"),
+                    TsStreamType::Ac3PlusAudio => Some("A_EAC3"),
+                    TsStreamType::Ac3PlusSecondaryAudio => Some("A_EAC3"),
+                    TsStreamType::Ac3TrueHdAudio => Some("A_TRUEHD"),
+                    TsStreamType::DtsAudio => Some("A_DTS"),
+                    TsStreamType::DtsHdAudio => Some("A_DTS"),
+                    TsStreamType::DtsHdSecondaryAudio => Some("A_DTS"),
+                    TsStreamType::DtsHdMasterAudio => Some("A_DTS"),
+                    TsStreamType::PresentationGraphics => Some("S_HDMV/PGS"),
+                    TsStreamType::Subtitle => Some("S_TEXT/UTF8"),
+                    _ => None
+                }
+            }
+            TrackField::Name => {
+                Some(self.description.as_str())
+            }
+        }
+    }
+}
+
+pub struct Bdmv;
+
+impl MkvPeel for Bdmv {
+    fn probe(&self, path: &Path) -> Result<bool, MkvPeelError> {
+        if path.metadata()?.is_dir() {
+            match path.join("BDMV").metadata() {
+                Ok(meta) => {
+                    Ok(meta.is_dir())
+                },
+                Err(err) => {
+                    if err.kind() == ErrorKind::NotFound {
+                        Ok(false)
+                    } else {
+                        Err(MkvPeelError::Io(err))
+                    }
+                }
+            }
+        } else {
+            Ok(false)
+        }
+    }
+    fn peel(&self, src: &Path, dst: &Path, langs: &[Language], buffs: &[TrackBuff]) -> Result<(), MkvPeelError> {
+        let fsd = FsDir::new(src);
+        let disk = BdRom::open(&fsd, false)?;
+        match find_best_playlist(&disk.playlists) {
+            Some(pls) => {
+                info!("playlist, name: {}, duration: {}", pls.name, format_secs(pls.total_length));
+                let (audios, subtitles) = tracks(&pls.streams, langs, buffs);
+                info!("audios: {:?}, subtitles: {:?}", audios, subtitles);
+                let src = src.join("BDMV/PLAYLIST").join(pls.name.to_lowercase());
+                let mut mkvmerge = Command::new("mkvmerge");
+                mkvmerge.arg("--output").arg(dst);
+                if !audios.is_empty() {
+                    mkvmerge.arg("--audio-tracks").arg(join(audios));
+                }
+                if !subtitles.is_empty() {
+                    mkvmerge.arg("--subtitle-tracks").arg(join(subtitles));
+                }
+                mkvmerge.arg(src);
+                debug!("run: {:?}", mkvmerge);
+                mkvmerge.spawn()?.wait()?;
+            }
+            None => {
+                warn!("failed to find a playlist: {}", src.display());
+            }
+        }
+        Ok(())
+    }
 }

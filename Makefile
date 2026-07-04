@@ -19,7 +19,7 @@ run-debug: build-debug
 		--buff a:c:A_TRUEHD:1000 \
 		--buff a:c:A_EAC3:100 \
 		--buff a:c:A_AC3:10 \
-		--buff a:c:A_DTS:-10 \
+		--buff a:c:A_FLAC:-10 \
 		--buff a:n:пучков:1000 \
 		--buff a:n:comment:-1000 \
 		--buff a:n:коммент:-1000 \

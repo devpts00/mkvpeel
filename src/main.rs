@@ -3,6 +3,8 @@ use std::path::{Path, PathBuf};
 use std::thread::sleep;
 use std::time::Duration;
 use clap::Parser;
+use humantime::format_duration;
+use isolang::Language;
 use regex::Regex;
 use tracing::{debug, info, warn};
 use crate::args::Cmd;
@@ -10,7 +12,7 @@ use crate::bdmv::Bdmv;
 use crate::error::MkvPeelError;
 use crate::mkv::Mkv;
 use crate::peel::{MkvPeel, TrackBuff};
-use crate::util::{init_tracing, log, ToOption, extract_name_without_ext, get_min_age, make_pretty_name};
+use crate::util::{init_tracing, log, ToOption, extract_name_without_ext, get_min_age, make_pretty_name, primary_lang};
 
 mod util;
 mod args;
@@ -22,7 +24,7 @@ pub mod peel;
 #[inline]
 fn find<'a>(peels: &'a [Box<dyn MkvPeel>], src_path: &Path) -> Option<&'a Box<dyn MkvPeel>> {
     peels.iter().find(|peel|
-        peel.probe(src_path).ok_warn("probe").unwrap_or(false)
+        peel.probe(src_path).ok_warn("probe", src_path.display()).unwrap_or(false)
     )
 }
 
@@ -30,7 +32,7 @@ fn scan(
     peels: &[Box<dyn MkvPeel>],
     src_dir: &Path,
     dst_dir: &Path,
-    languages: &[Regex],
+    languages: &[Language],
     buffs: &[TrackBuff],
     min_age: Duration
 ) -> Result<(), MkvPeelError> {
@@ -41,15 +43,15 @@ fn scan(
         debug!("found: {}", src_path.display());
         match find(peels, &src_path) {
             Some(peel) => {
-                if let Some(age) = get_min_age(&src_path, &src_meta).ok_warn("age") {
+                if let Some(age) = get_min_age(&src_path, &src_meta).ok_warn("age", src_path.display()) {
                     if age >= min_age {
                         match extract_name_without_ext(&src_path, &src_meta) {
                             Some(src_name) => {
-                                if let Some(mut dst_name) = make_pretty_name(src_name).ok_warn("prettify") {
+                                if let Some(mut dst_name) = make_pretty_name(src_name).ok_warn("prettify", src_name) {
                                     dst_name.push_str(".mkv");
                                     let dst_path = dst_dir.join(&dst_name);
                                     if !dst_path.exists() {
-                                        peel.peel(&src_path, &dst_path, languages, buffs).ok_warn("peel");
+                                        peel.peel(&src_path, &dst_path, languages, buffs).ok_warn("peel", src_path.display());
                                     }
                                 }
                             }
@@ -57,6 +59,8 @@ fn scan(
                                 warn!("name: {}", src_path.display());
                             }
                         }
+                    } else {
+                        info!("not ready, age: {}, path: {}", format_duration(age), src_path.display());
                     }
                 }
             }
@@ -74,7 +78,7 @@ fn run(
     peels: &[Box<dyn MkvPeel>],
     src_dir: &Path,
     dst_dir: &Path,
-    languages: &[Regex],
+    languages: &[Language],
     buff: &[TrackBuff],
     pause: Duration,
     age: Duration
@@ -89,9 +93,6 @@ fn run(
 
 fn main() {
     let _guard = init_tracing();
-    let src_dir = PathBuf::from("/home/nomad/Code/mkvpeel/in/PILLOW BOOK_HDCLUB_BY_VOLSHEBNIK/BDMV");
-    //log(bdmv(&src_dir));
-
     let cmd = Cmd::parse();
     debug!("cmd: {:?}", cmd);
     let peels: Vec<Box<dyn MkvPeel>> = vec!(Box::new(Mkv), Box::new(Bdmv));

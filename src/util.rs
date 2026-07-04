@@ -1,11 +1,13 @@
 use std::cmp::min;
 use std::error::Error;
 use std::ffi::OsStr;
-use std::fmt::{Debug, Display, Write};
+use std::fmt::{Debug, Display, Formatter, Write};
 use std::fs::Metadata;
 use std::path::Path;
 use std::time::Duration;
 use chrono::{Datelike, Utc};
+use isolang::Language;
+use oxilangtag::LanguageTag;
 use tracing::level_filters::LevelFilter;
 use tracing::{debug, error, warn};
 use tracing_subscriber::fmt::format::FmtSpan;
@@ -57,35 +59,41 @@ pub fn join<T: Display>(tracks: Vec<T>) -> String {
     text
 }
 
-pub trait ToOption<T> {
-    fn ok_warn(self, ctx: &'static str) -> Option<T>;
+#[inline]
+pub fn write_opt<T: Display>(f: &mut Formatter<'_>, value: Option<T>) -> std::fmt::Result {
+    match value {
+        Some(value) => write!(f, "{}", value),
+        None => write!(f, "und"),
+    }
 }
 
-impl <T, E: Display> ToOption<T> for Result<T, E> {
+pub trait ToOption<U> {
+    fn ok_warn<T: Display>(self, ctx: &'static str, t: T) -> Option<U>;
+}
+
+impl <U, E: Debug + Display> ToOption<U> for Result<U, E> {
     #[inline]
-    fn ok_warn(self, ctx: &'static str) -> Option<T> {
+    fn ok_warn<T: Display>(self, ctx: &'static str, t: T) -> Option<U> {
         match self {
-            Ok(val) => {
-                Some(val)
+            Ok(u) => {
+                Some(u)
             }
             Err(err) => {
-                warn!("ctx: {}", err);
+                warn!("context: {}, data: {}, error: {:?}", ctx, t, err);
                 None
             }
         }
     }
 }
 
-pub fn ok_warn<T, E: Display>(r: Result<T, E>) -> Option<T> {
-    match r {
-        Ok(v) => {
-            Some(v)
-        }
-        Err(e) => {
-            warn!("{}", e);
-            None
-        }
-    }
+#[inline]
+pub fn primary_lang(tag: &str) -> Option<Language> {
+    LanguageTag::parse(tag)
+        .ok_warn("lang", tag)
+        .and_then(|tag| {
+            let tag = tag.primary_language();
+            Language::from_639_1(tag).or(Language::from_639_3(tag))
+        })
 }
 
 pub fn get_min_age(path: &Path, meta: &Metadata) -> Result<Duration, MkvPeelError> {

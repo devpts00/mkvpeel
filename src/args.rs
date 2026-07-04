@@ -4,6 +4,7 @@ use std::str::FromStr;
 use clap::Parser;
 use clap_duration::duration_range_value_parse;
 use duration_human::{DurationHuman, DurationHumanValidator};
+use isolang::Language;
 use regex::{Regex, RegexBuilder};
 use thiserror::Error;
 use crate::peel::{TrackBuff, TrackField, TrackKind};
@@ -82,7 +83,7 @@ pub struct Cmd {
     #[arg(long, short)]
     pub dst: String,
     #[arg(long, value_delimiter = ',')]
-    pub languages: Vec<Regex>,
+    pub languages: Vec<Language>,
     #[arg(long, short)]
     pub buff: Vec<TrackBuff>,
     #[arg(long, default_value = "60s", value_parser = duration_range_value_parse!(min: 10s, max: 10min))]

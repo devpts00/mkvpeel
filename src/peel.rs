@@ -1,9 +1,11 @@
 use std::collections::HashMap;
 use std::fmt::{Display, Formatter};
 use std::path::Path;
+use isolang::Language;
 use regex::Regex;
 use tracing::{debug, info};
 use crate::error::MkvPeelError;
+use crate::util::write_opt;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TrackKind {
@@ -40,97 +42,122 @@ impl TrackBuff {
     }
 }
 
-pub trait Track {
-    fn number(&self) -> u16;
-    fn kind(&self) -> Option<TrackKind>;
-    fn lang(&self) -> Option<&str>;
-    fn field(&self, field: TrackField) -> Option<&str>;
+pub struct TrackDisplay<'a, T: Track> {
+    inner: &'a T
 }
 
-struct TrackBuffed<'a, T> {
-    track: &'a T,
+impl <'a, T: Track> From<&'a T> for TrackDisplay<'a, T> {
+    fn from(value: &'a T) -> Self {
+        Self { inner: value }
+    }
+}
+
+impl <'a, T: Track> Display for TrackDisplay<'a, T> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(f, "num: ")?;
+        write_opt(f, self.inner.number())?;
+        write!(f, ", kind: ")?;
+        write_opt(f, self.inner.kind())?;
+        write!(f, ", codec: ")?;
+        write_opt(f, self.inner.field(TrackField::Codec))?;
+        write!(f, ", name: ")?;
+        write_opt(f, self.inner.field(TrackField::Name))?;
+        Ok(())
+    }
+}
+
+pub trait Track: Sized {
+    fn number(&self) -> Option<u16>;
+    fn kind(&self) -> Option<TrackKind>;
+    fn lang(&self) -> Option<Language>;
+    fn field(&self, field: TrackField) -> Option<&str>;
+    fn display(&self) -> TrackDisplay<'_, Self> {
+        self.into()
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
+struct TrackNum {
+    num: u16,
     buff: i16,
 }
 
-impl <'a, T: Track> TrackBuffed<'a, T> {
-    fn new(track: &'a T) -> Self {
-        Self { track, buff: 0 }
+impl TrackNum {
+    fn new(num: u16, buff: i16) -> Self {
+        Self { num, buff }
     }
-    fn buff(&mut self, buffs: &[TrackBuff]) {
-        if let Some(kind) = self.track.kind() {
-            for buff in buffs {
-                if buff.kind == kind {
-                    if let Some(value) = self.track.field(buff.field) {
-                        if buff.regex.is_match(value) {
-                            self.buff += buff.value
-                        }
+}
+
+impl Display for TrackNum {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(f, "num: {}, buff: {}", self.num, self.buff)
+    }
+}
+
+
+#[inline]
+fn check_lang(lang: Language, langs: &[Language]) -> bool {
+    langs.contains(&lang)
+}
+
+#[inline]
+fn buff<T: Track>(track: &T, buffs: &[TrackBuff]) -> i16 {
+    let mut sum: i16 = 0;
+    if let Some(kind) = track.kind() {
+        for buff in buffs {
+            if buff.kind == kind {
+                if let Some(value) = track.field(buff.field) {
+                    if buff.regex.is_match(value) {
+                        sum += buff.value
                     }
                 }
             }
         }
     }
-}
-
-impl <'a, T: Track> Display for TrackBuffed<'a, T> {
-    fn fmt(&self, f: &mut Formatter) -> std::fmt::Result {
-        write!(f, "number: {}, ", self.track.number())?;
-        match self.track.kind() {
-            Some(kind) => write!(f, "kind: {}, ", kind)?,
-            None => write!(f, "kind: und, ")?,
-        };
-        write!(f, "lang: {}, ", self.track.lang().unwrap_or("und"))?;
-        write!(f, "codec: {}, ", self.track.field(TrackField::Codec).unwrap_or("und"))?;
-        write!(f, "name: {}, ", self.track.field(TrackField::Name).unwrap_or("und"))?;
-        write!(f, "buff: {}", self.buff)?;
-        Ok(())
-    }
+    sum
 }
 
 #[inline]
-fn check_language(language: &str, languages: &[Regex]) -> bool {
-    languages.iter().any(|r| r.is_match_at(language, 0))
-}
-
-#[inline]
-fn collect_ids<T: Track>(tracks: HashMap<&str, TrackBuffed<T>>) -> Vec<u16> {
-    tracks.into_iter().map(|(_, tb)| {
-        info!("collect, {}", tb);
-        tb.track.number()
+fn collect_ids(tracks: HashMap<Language, TrackNum>) -> Vec<u16> {
+    tracks.into_iter().map(|(_, tn)| {
+        info!("collect, number: {}, buff: {}", tn.num, tn.buff);
+        tn.num
     }).collect()
 }
 
 #[inline]
-fn modify_or_insert2<'a, 'b, T: Track>(tracks: &'b mut HashMap<&'a str, TrackBuffed<'a, T>>, language: &'a str, track: TrackBuffed<'a, T>) {
-    match tracks.get_mut(language) {
+fn upsert(tns: &mut HashMap<Language, TrackNum>, lang: Language, tn: TrackNum) {
+    match tns.get_mut(&lang) {
         Some(t) => {
-            if t.buff < track.buff {
-                debug!("replace, {}", track);
-                *t = track
+            if t.buff < tn.buff {
+                debug!("replace, number: {}, buff: {}", tn.num, tn.buff);
+                *t = tn
             }
         }
         None => {
-            debug!("insert, {}", track);
-            tracks.insert(language, track);
+            debug!("insert, number: {}, buff: {}", tn.num, tn.buff);
+            tns.insert(lang, tn);
         }
     }
 }
 
-pub fn tracks<T: Track>(tracks: &[T], langs: &[Regex], buffs: &[TrackBuff]) -> (Vec<u16>, Vec<u16>) {
-    let mut audios: HashMap<&str, TrackBuffed<T>> = HashMap::new();
-    let mut subtitles: HashMap<&str, TrackBuffed<T>> = HashMap::new();
-    for track in tracks {
-        let mut tb = TrackBuffed::new(track);
-        debug!("found, {}", tb);
-        if let Some(kind) = tb.track.kind() {
-            if let Some(lang) = tb.track.lang() {
-                if check_language(lang, langs) {
-                    tb.buff(buffs);
+pub fn tracks<T: Track>(tracks: &[T], langs: &[Language], buffs: &[TrackBuff]) -> (Vec<u16>, Vec<u16>) {
+    let mut audios: HashMap<Language, TrackNum> = HashMap::new();
+    let mut subtitles: HashMap<Language, TrackNum> = HashMap::new();
+    for (idx, track) in tracks.iter().enumerate() {
+        debug!("found, idx: {}, track: {}", idx, track.display());
+        if let Some(kind) = track.kind() {
+            if let Some(lang) = track.lang() {
+                if check_lang(lang, langs) {
+                    let num = track.number().unwrap_or(idx as u16);
+                    let buff = buff(track, buffs);
+                    let tn = TrackNum::new(num, buff);
                     match kind {
                         TrackKind::Audio => {
-                            modify_or_insert2(&mut audios, lang, tb);
+                            upsert(&mut audios, lang, tn);
                         }
                         TrackKind::Subtitles => {
-                            modify_or_insert2(&mut subtitles, lang, tb);
+                            upsert(&mut subtitles, lang, tn);
                         }
                     }
                 }
@@ -142,5 +169,5 @@ pub fn tracks<T: Track>(tracks: &[T], langs: &[Regex], buffs: &[TrackBuff]) -> (
 
 pub trait MkvPeel {
     fn probe(&self, path: &Path) -> Result<bool, MkvPeelError>;
-    fn peel(&self, src: &Path, dst: &Path, languages: &[Regex], buffs: &[TrackBuff]) -> Result<(), MkvPeelError>;
+    fn peel(&self, src: &Path, dst: &Path, langs: &[Language], buffs: &[TrackBuff]) -> Result<(), MkvPeelError>;
 }
