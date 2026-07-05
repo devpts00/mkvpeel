@@ -1,18 +1,18 @@
 use std::fs::{read_dir};
-use std::path::{Path, PathBuf};
+use std::path::{Path};
 use std::thread::sleep;
 use std::time::Duration;
 use clap::Parser;
 use humantime::format_duration;
 use isolang::Language;
-use regex::Regex;
 use tracing::{debug, info, warn};
 use crate::args::Cmd;
 use crate::bdmv::Bdmv;
 use crate::error::MkvPeelError;
+use crate::json::Json;
 use crate::mkv::Mkv;
 use crate::peel::{MkvPeel, TrackBuff};
-use crate::util::{init_tracing, log, ToOption, extract_name_without_ext, get_min_age, make_pretty_name, primary_lang};
+use crate::util::{init_tracing, log, ToOption, extract_name_without_ext, get_min_age, make_pretty_name};
 
 mod util;
 mod args;
@@ -20,6 +20,7 @@ mod error;
 pub mod bdmv;
 pub mod mkv;
 pub mod peel;
+pub mod json;
 
 #[inline]
 fn find<'a>(peels: &'a [Box<dyn MkvPeel>], src_path: &Path) -> Option<&'a Box<dyn MkvPeel>> {
@@ -52,6 +53,8 @@ fn scan(
                                     let dst_path = dst_dir.join(&dst_name);
                                     if !dst_path.exists() {
                                         peel.peel(&src_path, &dst_path, languages, buffs).ok_warn("peel", src_path.display());
+                                    } else {
+                                        debug!("exists: {}", dst_path.display());
                                     }
                                 }
                             }
@@ -60,7 +63,7 @@ fn scan(
                             }
                         }
                     } else {
-                        info!("not ready, age: {}, path: {}", format_duration(age), src_path.display());
+                        debug!("waiting, age: {}, path: {}", format_duration(age), src_path.display());
                     }
                 }
             }
@@ -95,7 +98,7 @@ fn main() {
     let _guard = init_tracing();
     let cmd = Cmd::parse();
     debug!("cmd: {:?}", cmd);
-    let peels: Vec<Box<dyn MkvPeel>> = vec!(Box::new(Mkv), Box::new(Bdmv));
+    let peels: Vec<Box<dyn MkvPeel>> = vec!(Box::new(Bdmv), Box::new(Json), Box::new(Mkv));
     let src_dir = Path::new(cmd.src.as_str());
     let dst_dir = Path::new(cmd.dst.as_str());
     let languages = cmd.languages;

@@ -7,7 +7,6 @@ use bdinfo_rs_core::stream::TsStreamType;
 use bdinfo_rs_core::vfs::fs::FsDir;
 use humantime::{format_duration, FormattedDuration};
 use isolang::Language;
-use regex::Regex;
 use tracing::{debug, info, warn};
 use crate::error::MkvPeelError;
 use crate::peel::{tracks, MkvPeel, Track, TrackBuff, TrackField, TrackKind};

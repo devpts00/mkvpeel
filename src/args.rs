@@ -5,7 +5,7 @@ use clap::Parser;
 use clap_duration::duration_range_value_parse;
 use duration_human::{DurationHuman, DurationHumanValidator};
 use isolang::Language;
-use regex::{Regex, RegexBuilder};
+use regex::{RegexBuilder};
 use thiserror::Error;
 use crate::peel::{TrackBuff, TrackField, TrackKind};
 

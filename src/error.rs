@@ -17,6 +17,9 @@ pub enum MkvPeelError {
     #[error("bdmv: {0}")]
     Bdmv(#[from] BdError),
 
+    #[error("json: {0}")]
+    Json(#[from] serde_json::Error),
+
     #[error("utf8: {0}")]
     Utf8(#[from] std::str::Utf8Error),
 

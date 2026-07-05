@@ -4,7 +4,6 @@ use std::path::Path;
 use std::process::Command;
 use isolang::Language;
 use matroska_demuxer::{MatroskaFile, TrackEntry, TrackType};
-use regex::Regex;
 use tracing::{debug, info};
 use crate::error::MkvPeelError;
 use crate::peel::{tracks, MkvPeel, Track, TrackBuff, TrackField, TrackKind};
@@ -45,7 +44,6 @@ impl MkvPeel for Mkv {
         let mut file = File::open(src)?;
         let mkv = MatroskaFile::open(&mut file)?;
         // TODO: consider adding track order
-        info!("tracks");
         let (audios, subtitles) = tracks(mkv.tracks(), langs, buffs);
         let mut mkvmerge = Command::new("mkvmerge");
         mkvmerge.arg("--output").arg(dst);

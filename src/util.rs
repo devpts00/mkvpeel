@@ -3,13 +3,15 @@ use std::error::Error;
 use std::ffi::OsStr;
 use std::fmt::{Debug, Display, Formatter, Write};
 use std::fs::Metadata;
+use std::io::{BufRead, BufReader, Read};
 use std::path::Path;
+use std::process::{Command, Stdio};
 use std::time::Duration;
 use chrono::{Datelike, Utc};
 use isolang::Language;
 use oxilangtag::LanguageTag;
 use tracing::level_filters::LevelFilter;
-use tracing::{debug, error, warn};
+use tracing::{debug, error, info, warn};
 use tracing_subscriber::fmt::format::FmtSpan;
 use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::util::SubscriberInitExt;
@@ -142,7 +144,7 @@ pub fn make_pretty_name(src: &str) -> Result<String, std::fmt::Error> {
     let mut year_unlocked = false;
     let mut year_in_progress = false;
     let mut year_bracketed = false;
-    let mut whitespace = false;
+    let mut whitespace = true;
     let mut year: u64 = 0;
     for c in src.chars() {
         if '0' <= c && c <= '9' && year_unlocked {
@@ -165,7 +167,7 @@ pub fn make_pretty_name(src: &str) -> Result<String, std::fmt::Error> {
                 }
             }
             year_unlocked = true;
-            if c == '.' || c.is_whitespace() {
+            if c == '.' || c =='_' || c.is_whitespace() {
                 year_bracketed = false;
                 if !whitespace {
                     dst.push(' ');
@@ -173,10 +175,47 @@ pub fn make_pretty_name(src: &str) -> Result<String, std::fmt::Error> {
                 }
             } else {
                 year_bracketed = c == '(';
+                if whitespace {
+                    for x in c.to_uppercase() {
+                        dst.push(x);
+                    }
+                } else {
+                    for x in c.to_lowercase() {
+                        dst.push(x);
+                    }
+                }
                 whitespace = false;
-                dst.push(c);
             }
         }
     }
     Ok(dst)
+}
+
+pub fn mkv_probe(src: &Path, buf: &mut String) -> Result<(), MkvPeelError> {
+    let mut mkvmerge = Command::new("mkvmerge");
+    mkvmerge.arg("-J").arg(src);
+    let mut mkvmerge = mkvmerge
+        .stdout(Stdio::piped())
+        .spawn()?;
+    if let Some(stdout) = &mut mkvmerge.stdout {
+        let mut reader = BufReader::new(stdout);
+        reader.read_to_string(buf)?;
+    }
+    mkvmerge.wait()?;
+    Ok(())
+}
+
+pub fn pipe(mut cmd: Command) -> Result<(), MkvPeelError> {
+    let mut child = cmd.stdout(Stdio::piped())
+        .spawn()?;
+    if let Some(stdout) = &mut child.stdout {
+        let reader = BufReader::new(stdout);
+        for _ in reader.lines() {
+            // if let Ok(line) = line {
+            //     info!("{}: {}", cmd.get_program().display(), line);
+            // }
+        }
+    }
+    child.wait()?;
+    Ok(())
 }
