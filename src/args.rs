@@ -66,12 +66,10 @@ impl FromStr for TrackBuff {
     type Err = InvalidBuffError;
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         let mut split = s.split(":").into_iter();
-        let track: TrackKind = split.next().ok_or(InvalidBuffError::Format)?.parse()?;
-        let field: TrackField = split.next().ok_or(InvalidBuffError::Format)?.parse()?;
         let regex = split.next().ok_or(InvalidBuffError::Format)?;
         let regex = RegexBuilder::new(regex).case_insensitive(true).build()?;
         let score: i16 = split.next().ok_or(InvalidBuffError::Format)?.parse()?;
-        Ok(TrackBuff::new(track, field, regex, score))
+        Ok(TrackBuff::new(regex, score))
     }
 }
 
@@ -84,8 +82,10 @@ pub struct Cmd {
     pub dst: String,
     #[arg(long, value_delimiter = ',')]
     pub languages: Vec<Language>,
-    #[arg(long, short)]
-    pub buff: Vec<TrackBuff>,
+    #[arg(long)]
+    pub codec: Vec<TrackBuff>,
+    #[arg(long)]
+    pub name: Vec<TrackBuff>,
     #[arg(long, default_value = "60s", value_parser = duration_range_value_parse!(min: 10s, max: 10min))]
     pub pause: DurationHuman,
     #[arg(long, default_value = "60s", value_parser = duration_range_value_parse!(min: 10s, max: 60min))]

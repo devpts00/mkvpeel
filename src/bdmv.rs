@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::io::ErrorKind;
 use std::path::Path;
 use std::process::Command;
@@ -9,7 +10,7 @@ use humantime::{format_duration, FormattedDuration};
 use isolang::Language;
 use tracing::{debug, info, warn};
 use crate::error::MkvPeelError;
-use crate::peel::{tracks, MkvPeel, Track, TrackBuff, TrackField, TrackKind};
+use crate::peel::{collect_track_ids, MkvPeel, Track, TrackBuff, TrackField, TrackKind};
 use crate::util::{join, primary_lang};
 
 #[inline]
@@ -150,16 +151,29 @@ impl MkvPeel for Bdmv {
         match find_best_playlist(&disk.playlists) {
             Some(pls) => {
                 info!("playlist, name: {}, duration: {}", pls.name, format_secs(pls.total_length));
-                let (audios, subtitles) = tracks(&pls.streams, langs, buffs);
+
+                let tracks = &pls.streams;
+                let size = 2 * tracks.len();
+                let mut audios = HashMap::with_capacity(size);
+                let mut subtitles = HashMap::with_capacity(size);
+                let mut audio_ids = Vec::with_capacity(size);
+                let mut subtitle_ids = Vec::with_capacity(size);
+                let mut audio_buf = String::with_capacity(2 * size);
+                let mut subtitle_buf = String::with_capacity(2 * size);
+                collect_track_ids(tracks, langs, buffs, &mut audios, &mut subtitles, &mut audio_ids, &mut subtitle_ids);
+
                 info!("audios: {:?}, subtitles: {:?}", audios, subtitles);
                 let src = src.join("BDMV/PLAYLIST").join(pls.name.to_lowercase());
                 let mut mkvmerge = Command::new("mkvmerge");
                 mkvmerge.arg("--output").arg(dst);
                 if !audios.is_empty() {
-                    mkvmerge.arg("--audio-tracks").arg(join(audios));
+                    join(&audio_ids, &mut audio_buf);
+                    mkvmerge.arg("--audio-tracks").arg(&audio_buf);
+
                 }
                 if !subtitles.is_empty() {
-                    mkvmerge.arg("--subtitle-tracks").arg(join(subtitles));
+                    join(&subtitle_ids, &mut subtitle_buf);
+                    mkvmerge.arg("--subtitle-tracks").arg(&subtitle_buf);
                 }
                 mkvmerge.arg(src);
                 debug!("run: {:?}", mkvmerge);

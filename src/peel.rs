@@ -30,15 +30,13 @@ pub enum TrackField {
 
 #[derive(Debug, Clone)]
 pub struct TrackBuff {
-    pub kind: TrackKind,
-    pub field: TrackField,
     pub regex: Regex,
     pub value: i16,
 }
 
 impl TrackBuff {
-    pub fn new(kind: TrackKind, field: TrackField, regex: Regex, value: i16) -> Self {
-        Self { kind, field, regex, value }
+    pub fn new(regex: Regex, value: i16) -> Self {
+        Self { regex, value }
     }
 }
 
@@ -77,13 +75,13 @@ pub trait Track: Sized {
 }
 
 #[derive(Debug, Clone, Copy)]
-struct TrackNum {
+pub struct TrackNum {
     num: u16,
     buff: i16,
 }
 
 impl TrackNum {
-    fn new(num: u16, buff: i16) -> Self {
+    pub fn new(num: u16, buff: i16) -> Self {
         Self { num, buff }
     }
 }
@@ -94,35 +92,28 @@ impl Display for TrackNum {
     }
 }
 
-
-#[inline]
-fn check_lang(lang: Language, langs: &[Language]) -> bool {
-    langs.contains(&lang)
-}
-
 #[inline]
 fn buff<T: Track>(track: &T, buffs: &[TrackBuff]) -> i16 {
     let mut sum: i16 = 0;
     if let Some(kind) = track.kind() {
         for buff in buffs {
-            if buff.kind == kind {
-                if let Some(value) = track.field(buff.field) {
-                    if buff.regex.is_match(value) {
-                        sum += buff.value
-                    }
-                }
-            }
+            // if let Some(value) = track.field(buff.field) {
+            //     if buff.regex.is_match(value) {
+            //         sum += buff.value
+            //     }
+            // }
         }
     }
     sum
 }
 
 #[inline]
-fn collect_ids(tracks: HashMap<Language, TrackNum>) -> Vec<u16> {
-    tracks.into_iter().map(|(_, tn)| {
+fn collect_ids(tracks: &HashMap<Language, TrackNum>, ids: &mut Vec<u16>) {
+    ids.clear();
+    for (_, tn) in tracks {
         info!("collect, number: {}, buff: {}", tn.num, tn.buff);
-        tn.num
-    }).collect()
+        ids.push(tn.num);
+    }
 }
 
 #[inline]
@@ -141,30 +132,41 @@ fn upsert(tns: &mut HashMap<Language, TrackNum>, lang: Language, tn: TrackNum) {
     }
 }
 
-pub fn tracks<T: Track>(tracks: &[T], langs: &[Language], buffs: &[TrackBuff]) -> (Vec<u16>, Vec<u16>) {
-    let mut audios: HashMap<Language, TrackNum> = HashMap::new();
-    let mut subtitles: HashMap<Language, TrackNum> = HashMap::new();
+pub fn collect_track_ids<T: Track>(
+    tracks: &[T],
+    langs: &[Language],
+    buffs: &[TrackBuff],
+    audios: &mut HashMap<Language, TrackNum>,
+    subtitles: &mut HashMap<Language, TrackNum>,
+    audio_ids: &mut Vec<u16>,
+    subtitle_ids: &mut Vec<u16>,
+) {
+    audios.clear();
+    subtitles.clear();
+    audio_ids.clear();
+    subtitle_ids.clear();
     for (idx, track) in tracks.iter().enumerate() {
         debug!("found, idx: {}, track: {}", idx, track.display());
         if let Some(kind) = track.kind() {
             if let Some(lang) = track.lang() {
-                if check_lang(lang, langs) {
+                if langs.contains(&lang) {
                     let num = track.number().unwrap_or(idx as u16);
                     let buff = buff(track, buffs);
                     let tn = TrackNum::new(num, buff);
                     match kind {
                         TrackKind::Audio => {
-                            upsert(&mut audios, lang, tn);
+                            upsert(audios, lang, tn);
                         }
                         TrackKind::Subtitles => {
-                            upsert(&mut subtitles, lang, tn);
+                            upsert(subtitles, lang, tn);
                         }
                     }
                 }
             }
         }
     }
-    (collect_ids(audios), collect_ids(subtitles))
+    collect_ids(audios, audio_ids);
+    collect_ids(subtitles, audio_ids);
 }
 
 pub trait MkvPeel {

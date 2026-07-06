@@ -9,7 +9,7 @@ use tracing::{debug, info, warn};
 use crate::args::Cmd;
 use crate::bdmv::Bdmv;
 use crate::error::MkvPeelError;
-use crate::json::Json;
+use crate::json::JsonImpl;
 use crate::mkv::Mkv;
 use crate::peel::{MkvPeel, TrackBuff};
 use crate::util::{init_tracing, log, ToOption, extract_name_without_ext, get_min_age, make_pretty_name};
@@ -21,6 +21,7 @@ pub mod bdmv;
 pub mod mkv;
 pub mod peel;
 pub mod json;
+pub mod model;
 
 #[inline]
 fn find<'a>(peels: &'a [Box<dyn MkvPeel>], src_path: &Path) -> Option<&'a Box<dyn MkvPeel>> {
@@ -98,12 +99,13 @@ fn main() {
     let _guard = init_tracing();
     let cmd = Cmd::parse();
     debug!("cmd: {:?}", cmd);
-    let peels: Vec<Box<dyn MkvPeel>> = vec!(Box::new(Bdmv), Box::new(Json), Box::new(Mkv));
+    let peels: Vec<Box<dyn MkvPeel>> = vec!(Box::new(Bdmv), Box::new(Mkv));
     let src_dir = Path::new(cmd.src.as_str());
     let dst_dir = Path::new(cmd.dst.as_str());
     let languages = cmd.languages;
-    let buff = cmd.buff;
+    let codecs = cmd.codec;
+    let names = cmd.name;
     let pause = Duration::from(&cmd.pause);
     let age = Duration::from(&cmd.age);
-    log(run(&peels, src_dir, dst_dir, &languages, &buff, pause, age));
+    //log(run(&peels, src_dir, dst_dir, &languages, &buff, pause, age));
 }

@@ -50,15 +50,14 @@ pub fn log<T: Debug, E: Error>(result: Result<T, E>) {
 }
 
 #[inline]
-pub fn join<T: Display>(tracks: Vec<T>) -> String {
-    let mut text = String::with_capacity(tracks.len() * 3);
-    if !tracks.is_empty() {
-        for track in tracks {
-            write!(&mut text, "{},", track).unwrap();
+pub fn join<T: Display>(items: &[T], buf: &mut String) {
+    buf.clear();
+    if !items.is_empty() {
+        for track in items {
+            write!(buf, "{},", track).unwrap();
         }
-        text.truncate(text.len() - 1);
+        buf.truncate(buf.len() - 1);
     }
-    text
 }
 
 #[inline]
@@ -189,20 +188,6 @@ pub fn make_pretty_name(src: &str) -> Result<String, std::fmt::Error> {
         }
     }
     Ok(dst)
-}
-
-pub fn mkv_probe(src: &Path, buf: &mut String) -> Result<(), MkvPeelError> {
-    let mut mkvmerge = Command::new("mkvmerge");
-    mkvmerge.arg("-J").arg(src);
-    let mut mkvmerge = mkvmerge
-        .stdout(Stdio::piped())
-        .spawn()?;
-    if let Some(stdout) = &mut mkvmerge.stdout {
-        let mut reader = BufReader::new(stdout);
-        reader.read_to_string(buf)?;
-    }
-    mkvmerge.wait()?;
-    Ok(())
 }
 
 pub fn pipe(mut cmd: Command) -> Result<(), MkvPeelError> {
