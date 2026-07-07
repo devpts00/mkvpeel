@@ -1,16 +1,18 @@
+use std::borrow::Cow;
 use std::collections::HashMap;
 use std::ffi::OsStr;
 use std::fmt::{Display, Formatter, Write};
 use std::io::{ErrorKind};
 use std::mem::swap;
-use std::path::{Path, PathBuf};
+use std::path::{Path};
 use std::process::{Command};
+use std::time::Duration;
 use isolang::Language;
-use tracing::{debug, warn};
+use tracing::{debug, info};
+use crate::args::TrackBuff;
 use crate::error::MkvPeelError;
 use crate::model::{PlaylistInfo, TrackInfo};
-use crate::peel::{collect_track_ids, MkvPeel, TrackBuff};
-use crate::util::{join, pipe, ToOption};
+use crate::util::{pipe};
 
 fn buff_all(value: Option<&str>, buffs: &[TrackBuff]) -> i16 {
     let mut buff = 0;
@@ -93,7 +95,6 @@ impl TrackKindCtx {
 }
 
 struct PlayListCtx {
-    path: PathBuf,
     audio: TrackKindCtx,
     subtitles: TrackKindCtx,
     score: u16
@@ -101,17 +102,12 @@ struct PlayListCtx {
 
 impl PlayListCtx {
     fn new() -> Self {
-        Self { path: PathBuf::new(), audio: TrackKindCtx::new(), subtitles: TrackKindCtx::new(), score: 0 }
+        Self { audio: TrackKindCtx::new(), subtitles: TrackKindCtx::new(), score: 0 }
     }
-    fn clear(&mut self) {
-        self.path.clear();
+    fn reload(&mut self, playlist_info: &PlaylistInfo, langs: &[Language], codecs: &[TrackBuff], names: &[TrackBuff]) {
         self.audio.clear();
         self.subtitles.clear();
         self.score = 0;
-    }
-    fn reload(&mut self, path: PathBuf, playlist_info: &PlaylistInfo, langs: &[Language], codecs: &[TrackBuff], names: &[TrackBuff]) {
-        self.clear();
-        self.path = path;
         for track_info in playlist_info.tracks() {
             if let Some(kind) = track_info.kind() {
                 match kind {
@@ -179,8 +175,9 @@ impl JsonImpl {
                 .unwrap_or(false))
         }
     }
-    fn peel(&mut self, src: PathBuf, dst: &Path) -> Result<(), MkvPeelError> {
+    pub fn peel(&mut self, src: &Path, dst: &Path) -> Result<(), MkvPeelError> {
         let meta = src.metadata()?;
+        let mut src_max = Cow::Borrowed(src);
         if meta.is_dir() {
             let dir = src.join("BDMV/PLAYLIST");
             let entries = dir.read_dir()?;
@@ -188,13 +185,21 @@ impl JsonImpl {
                 let entry = entry?;
                 let meta = entry.metadata()?;
                 if meta.is_file() {
-                    let src = entry.path();
-                    if let Some(ext) = src.extension() {
+                    let src_cur = entry.path();
+                    if let Some(ext) = src_cur.extension() {
                         if ext == OsStr::new("mpls") {
-                            let info = PlaylistInfo::load(&src, &mut self.buf)?;
-                            self.cur.reload(src, &info, &self.langs, &self.codecs, &self.names);
-                            if self.max.score < self.cur.score {
-                                swap(&mut self.max, &mut self.cur);
+                            let info = PlaylistInfo::load(&src_cur, &mut self.buf)?;
+                            if info.recognized() && info.supported() {
+                                if let Some(duration) = info.duration() {
+                                    if Duration::from_hours(1) <= duration && duration <= Duration::from_hours(6) {
+                                        self.cur.reload(&info, &self.langs, &self.codecs, &self.names);
+                                        if self.max.score < self.cur.score {
+                                            swap(&mut self.max, &mut self.cur);
+                                            src_max = Cow::Owned(src_cur);
+                                            debug!("max: {}, score: {}", src_max.display(), self.max.score);
+                                        }
+                                    }
+                                }
                             }
                         }
                     }
@@ -202,10 +207,9 @@ impl JsonImpl {
             }
         } else {
             let info = PlaylistInfo::load(&src, &mut self.buf)?;
-            self.max.reload(src, &info, &self.langs, &self.codecs, &self.names);
+            self.max.reload(&info, &self.langs, &self.codecs, &self.names);
         }
         let mut mkvmerge = Command::new("mkvmerge");
-        mkvmerge.arg("--verbose");
         mkvmerge.arg("--output").arg(dst);
         if !self.max.audio.is_empty() {
             let ids = self.max.audio.ids()?;
@@ -215,8 +219,8 @@ impl JsonImpl {
             let ids = self.max.subtitles.ids()?;
             mkvmerge.arg("--subtitle-tracks").arg(ids);
         }
-        mkvmerge.arg(&self.max.path);
-        debug!("run: {:?}", mkvmerge);
+        mkvmerge.arg(src_max.as_ref());
+        info!("run: {:?}", mkvmerge);
         pipe(mkvmerge)?;
         Ok(())
     }

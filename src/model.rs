@@ -4,6 +4,7 @@ use std::process::{Command, Stdio};
 use std::time::Duration;
 use isolang::Language;
 use serde::Deserialize;
+use tracing::info;
 use crate::error::MkvPeelError;
 use crate::util::primary_lang;
 
@@ -18,6 +19,7 @@ fn codec_id(codec: &str) -> &str {
 
 #[derive(Debug, Deserialize)]
 struct CtrPropsInfo {
+    #[serde(rename(deserialize = "playlist_duration"))]
     duration: Option<u64>
 }
 
@@ -79,16 +81,17 @@ impl <'a> PlaylistInfo<'a> {
         self.container.properties.duration
             .map(|nanos| Duration::from_nanos(nanos))
     }
-    pub fn recognized(self) -> bool {
+    pub fn recognized(&self) -> bool {
         self.container.recognized
     }
-    pub fn supported(self) -> bool {
+    pub fn supported(&self) -> bool {
         self.container.supported
     }
 }
 
 impl <'a> PlaylistInfo<'a> {
     pub fn load(path: &Path, buf: &'a mut String) -> Result<PlaylistInfo<'a>, MkvPeelError> {
+        buf.clear();
         let mut mkvmerge = Command::new("mkvmerge");
         mkvmerge.arg("-J").arg(path);
         let mut mkvmerge = mkvmerge
@@ -99,7 +102,9 @@ impl <'a> PlaylistInfo<'a> {
             reader.read_to_string(buf)?;
         }
         mkvmerge.wait()?;
+        //info!("json: {}", buf.as_str());
         let info = serde_json::from_str(buf.as_str())?;
+        //info!("info: {:?}", info);
         Ok(info)
     }
 }

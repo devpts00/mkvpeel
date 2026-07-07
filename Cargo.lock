@@ -77,16 +77,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f2032f911046de80f0a198e0901378627c33f59ea0ac00e363d481118bd70a53"
 
 [[package]]
-name = "bdinfo-rs-core"
-version = "1.0.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d5819fc36de48e4875974fd1f4000d55ad338b182defe02830a796940fe1d044"
-dependencies = [
- "roxmltree",
- "thiserror 2.0.18",
-]
-
-[[package]]
 name = "bumpalo"
 version = "3.20.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -348,12 +338,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "matroska-demuxer"
-version = "0.8.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7037404c874fc7a465dd0356d7d8f9f3237b425511942eb64dbe956e6adc7c01"
-
-[[package]]
 name = "memchr"
 version = "2.8.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -363,14 +347,12 @@ checksum = "88904434abc2901f197fe8cc55f0445e7ded921dba5911dad2e2b39b48e663c4"
 name = "mkvpeel"
 version = "0.0.1"
 dependencies = [
- "bdinfo-rs-core",
  "chrono",
  "clap",
  "clap-duration",
  "duration-human",
  "humantime",
  "isolang",
- "matroska-demuxer",
  "oxilangtag",
  "regex",
  "serde",
@@ -489,15 +471,6 @@ name = "regex-syntax"
 version = "0.8.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d6f6ff9a378485b298a5286656da665ba74413d36db0979633275d2e708145d4"
-
-[[package]]
-name = "roxmltree"
-version = "0.21.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f1964b10c76125c36f8afe190065a4bf9a87bf324842c05701330bba9f1cacbb"
-dependencies = [
- "memchr",
-]
 
 [[package]]
 name = "rustversion"

@@ -36,23 +36,19 @@ run-release: build-release
 		--src=./in \
 		--dst=./out \
 		--languages=en,ru \
-		--buff a:c:A_TRUEHD:1000 \
-		--buff a:c:A_EAC3:100 \
-		--buff a:c:A_AC3:10 \
-		--buff a:c:A_DTS:-10 \
-		--buff a:n:пучков:1000 \
-		--buff a:n:comment:-1000 \
-		--buff a:n:conversation:-1000 \
-		--buff a:n:коммент:-1000 \
-		--buff s:c:S_TEXT/UTF8:100 \
-		--buff s:c:S_HDMV/PGS:10 \
-		--buff s:n:пучков:1000 \
-		--buff s:n:full:100 \
-		--buff s:n:sdh:-100 \
-		--buff s:n:форс:-100 \
-		--buff s:n:comment:-1000 \
-		--buff s:n:conversation:-1000 \
-		--buff s:n:коммент:-1000
+		--codec A_TRUEHD:1000 \
+		--codec A_EAC3:100 \
+		--codec A_AC3:10 \
+		--codec A_FLAC:-10 \
+		--codec S_TEXT/UTF8:100 \
+		--codec S_HDMV/PGS:10 \
+		--name пучков:1000 \
+		--name full:100 \
+		--name sdh:-100 \
+		--name форс:-100 \
+		--name conversation:-1000 \
+		--name comment:-1000 \
+		--name коммент:-1000
 
 pull-docker:
 	docker compose pull

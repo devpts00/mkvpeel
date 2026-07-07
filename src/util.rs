@@ -1,9 +1,9 @@
 use std::cmp::min;
 use std::error::Error;
 use std::ffi::OsStr;
-use std::fmt::{Debug, Display, Formatter, Write};
+use std::fmt::{Debug, Display, Write};
 use std::fs::Metadata;
-use std::io::{BufRead, BufReader, Read};
+use std::io::{BufRead, BufReader};
 use std::path::Path;
 use std::process::{Command, Stdio};
 use std::time::Duration;
@@ -11,7 +11,7 @@ use chrono::{Datelike, Utc};
 use isolang::Language;
 use oxilangtag::LanguageTag;
 use tracing::level_filters::LevelFilter;
-use tracing::{debug, error, info, warn};
+use tracing::{debug, error, warn};
 use tracing_subscriber::fmt::format::FmtSpan;
 use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::util::SubscriberInitExt;
@@ -46,25 +46,6 @@ pub fn log<T: Debug, E: Error>(result: Result<T, E>) {
         Err(err) => {
             error!("error: {}", err)
         }
-    }
-}
-
-#[inline]
-pub fn join<T: Display>(items: &[T], buf: &mut String) {
-    buf.clear();
-    if !items.is_empty() {
-        for track in items {
-            write!(buf, "{},", track).unwrap();
-        }
-        buf.truncate(buf.len() - 1);
-    }
-}
-
-#[inline]
-pub fn write_opt<T: Display>(f: &mut Formatter<'_>, value: Option<T>) -> std::fmt::Result {
-    match value {
-        Some(value) => write!(f, "{}", value),
-        None => write!(f, "und"),
     }
 }
 

@@ -1,65 +1,33 @@
-use std::fmt::{Display, Formatter};
 use std::num::ParseIntError;
 use std::str::FromStr;
 use clap::Parser;
 use clap_duration::duration_range_value_parse;
 use duration_human::{DurationHuman, DurationHumanValidator};
 use isolang::Language;
-use regex::{RegexBuilder};
+use regex::{Regex, RegexBuilder};
 use thiserror::Error;
-use crate::peel::{TrackBuff, TrackField, TrackKind};
-
-#[derive(Debug, Error)]
-pub struct InvalidTokenError {
-    kind: & 'static str,
-    token: String
-}
-
-impl InvalidTokenError {
-    fn new(kind: &'static str, token: &str) -> Self {
-        let token = token.to_string();
-        Self { kind, token }
-    }
-}
-
-impl Display for InvalidTokenError {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        write!(f, "invalid {}: '{}'", self.kind, self.token)
-    }
-}
-
-impl FromStr for TrackKind {
-    type Err = InvalidTokenError;
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        match s {
-            "a" => Ok(TrackKind::Audio),
-            "s" => Ok(TrackKind::Subtitles),
-            t => Err(InvalidTokenError::new("track", t))
-        }
-    }
-}
-
-impl FromStr for TrackField {
-    type Err = InvalidTokenError;
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        match s {
-            "c" => Ok(Self::Codec),
-            "n" => Ok(Self::Name),
-            f => Err(InvalidTokenError::new("field", f))
-        }
-    }
-}
 
 #[derive(Debug, Error)]
 pub enum InvalidBuffError {
     #[error("format")]
     Format,
-    #[error("token: {0}")]
-    Token(#[from] InvalidTokenError),
     #[error("parse: {0}")]
-    Score(#[from] ParseIntError),
+    Buff(#[from] ParseIntError),
     #[error("regex: {0}")]
     Regex(#[from] regex::Error),
+}
+
+
+#[derive(Debug, Clone)]
+pub struct TrackBuff {
+    pub regex: Regex,
+    pub value: i16,
+}
+
+impl TrackBuff {
+    pub fn new(regex: Regex, value: i16) -> Self {
+        Self { regex, value }
+    }
 }
 
 impl FromStr for TrackBuff {

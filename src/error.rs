@@ -1,6 +1,4 @@
 use std::path::PathBuf;
-use bdinfo_rs_core::error::BdError;
-use matroska_demuxer::DemuxError;
 use thiserror::Error;
 
 #[derive(Debug, Error)]
@@ -10,12 +8,6 @@ pub enum MkvPeelError {
 
     #[error("time: {0}")]
     Time(#[from] std::time::SystemTimeError),
-
-    #[error("mkv: {0}")]
-    Mkv(#[from] DemuxError),
-
-    #[error("bdmv: {0}")]
-    Bdmv(#[from] BdError),
 
     #[error("json: {0}")]
     Json(#[from] serde_json::Error),
@@ -31,5 +23,4 @@ pub enum MkvPeelError {
 
     #[error("format: {0}")]
     Format(#[from] std::fmt::Error),
-
 }
