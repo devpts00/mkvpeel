@@ -1,228 +1,108 @@
-use std::borrow::Cow;
-use std::collections::HashMap;
-use std::ffi::OsStr;
-use std::fmt::{Display, Formatter, Write};
-use std::io::{ErrorKind};
-use std::mem::swap;
-use std::path::{Path};
-use std::process::{Command};
+use std::io::{BufReader, Read};
+use std::path::Path;
+use std::process::{Command, Stdio};
 use std::time::Duration;
 use isolang::Language;
-use tracing::{debug, info};
-use crate::args::TrackBuff;
+use serde::Deserialize;
 use crate::error::MkvPeelError;
-use crate::model::{PlaylistInfo, TrackInfo};
-use crate::util::{pipe};
+use crate::util::primary_lang;
 
-fn buff_all(value: Option<&str>, buffs: &[TrackBuff]) -> i16 {
-    let mut buff = 0;
-    if let Some(v) = value {
-        for b in buffs {
-            if b.regex.is_match(v) {
-                buff += b.value;
-            }
-        }
+#[inline]
+fn codec_id(codec: &str) -> &str {
+    match codec {
+        "E-AC-3" => "A_EAC3",
+        "Timed Text" => "S_TEXT/UTF8",
+        c => c
     }
-    buff
 }
 
-#[derive(Debug, Clone, Copy)]
-pub struct TrackCtx {
+#[derive(Debug, Deserialize)]
+struct CtrPropsInfo {
+    playlist_duration: Option<u64>
+}
+
+#[derive(Debug, Deserialize)]
+struct CtrInfo {
+    properties: CtrPropsInfo,
+    recognized: bool,
+    supported: bool,
+}
+
+#[derive(Debug, Deserialize)]
+struct TrackPropsInfo<'a> {
+    codec_id: Option<&'a str>,
+    language: Option<&'a str>,
+    language_ietf: Option<&'a str>,
+    track_name: Option<&'a str>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct TrackInfo<'a> {
     id: u16,
-    buff: i16,
+    #[serde(rename(deserialize = "type"))]
+    kind: Option<&'a str>,
+    codec: Option<&'a str>,
+    properties: TrackPropsInfo<'a>
 }
 
-impl TrackCtx {
-    fn new(id: u16, buff: i16) -> Self {
-        Self { id, buff }
+impl <'a> TrackInfo<'a> {
+    pub fn id(&self) -> u16 {
+        self.id
     }
-}
-
-impl Display for TrackCtx {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        write!(f, "id: {}, buff: {}", self.id, self.buff)
+    pub fn kind(&self) -> Option<&'a str> {
+        self.kind
     }
-}
-
-struct TrackKindCtx {
-    tracks: HashMap<Language, TrackCtx>,
-    buf: String,
-}
-
-impl TrackKindCtx {
-    fn new() -> Self {
-        Self { tracks: HashMap::with_capacity(16), buf: String::with_capacity(64) }
+    pub fn codec(&self) -> Option<&'a str> {
+        self.properties.codec_id.or(self.codec.map(codec_id))
     }
-    fn clear(&mut self) {
-        self.tracks.clear();
-        self.buf.clear();
+    pub fn lang(&self) -> Option<Language> {
+        self.properties.language_ietf.and_then(primary_lang)
+            .or(self.properties.language.and_then(primary_lang))
     }
-    fn upsert(&mut self, langs: &[Language], codecs: &[TrackBuff], names: &[TrackBuff], track: &TrackInfo) {
-        if let Some(lang) = track.lang() {
-            if langs.contains(&lang) {
-                let id = track.id();
-                let buff = buff_all(track.codec(), codecs) + buff_all(track.name(), names);
-                let ctx = TrackCtx::new(id, buff);
-                match self.tracks.get_mut(&lang) {
-                    Some(t) => {
-                        if t.buff < ctx.buff {
-                            debug!("replace, id: {}, buff: {}", ctx.id, ctx.buff);
-                            *t = ctx
-                        }
-                    }
-                    None => {
-                        debug!("insert, id: {}, buff: {}", ctx.id, ctx.buff);
-                        self.tracks.insert(lang, ctx);
-                    }
-                }
-            }
-        }
-    }
-    fn is_empty(&self) -> bool {
-        self.tracks.is_empty()
-    }
-    fn ids(&mut self) -> Result<&str, std::fmt::Error> {
-        if self.buf.is_empty() {
-            for (_, track) in &self.tracks {
-                write!(&mut self.buf, "{},", track.id)?;
-            }
-            if !self.buf.is_empty() {
-                self.buf.truncate(self.buf.len() - 1)
-            }
-        }
-        Ok(self.buf.as_str())
+    pub fn name(&self) -> Option<&'a str> {
+        self.properties.track_name
     }
 }
 
-struct PlayListCtx {
-    audio: TrackKindCtx,
-    subtitles: TrackKindCtx,
-    score: u16
+#[derive(Debug, Deserialize)]
+#[serde(bound(deserialize = "'de: 'a"))]
+pub struct PlaylistInfo<'a> {
+    container: CtrInfo,
+    tracks: Vec<TrackInfo<'a>>
 }
 
-impl PlayListCtx {
-    fn new() -> Self {
-        Self { audio: TrackKindCtx::new(), subtitles: TrackKindCtx::new(), score: 0 }
+impl <'a> PlaylistInfo<'a> {
+    pub fn tracks(&self) -> &[TrackInfo<'a>] {
+        &self.tracks
     }
-    fn reload(&mut self, playlist_info: &PlaylistInfo, langs: &[Language], codecs: &[TrackBuff], names: &[TrackBuff]) {
-        self.audio.clear();
-        self.subtitles.clear();
-        self.score = 0;
-        for track_info in playlist_info.tracks() {
-            if let Some(kind) = track_info.kind() {
-                match kind {
-                    "video" => {
-                        self.score += 1000;
-                    }
-                    "audio" => {
-                        self.score += 100;
-                        self.audio.upsert(langs, codecs, names, track_info);
-                    }
-                    "subtitles" => {
-                        self.score += 10;
-                        self.subtitles.upsert(langs, codecs, names, track_info);
-                    }
-                    _ => {
-                    }
-                }
-            }
-        }
+    pub fn duration(&self) -> Option<Duration> {
+        self.container.properties.playlist_duration
+            .map(|nanos| Duration::from_nanos(nanos))
+    }
+    pub fn recognized(&self) -> bool {
+        self.container.recognized
+    }
+    pub fn supported(&self) -> bool {
+        self.container.supported
     }
 }
 
-pub struct JsonImpl {
-    langs: Vec<Language>,
-    codecs: Vec<TrackBuff>,
-    names: Vec<TrackBuff>,
-    max: PlayListCtx,
-    cur: PlayListCtx,
-    buf: String,
-    bdmv: &'static OsStr,
-    extensions: Vec<&'static OsStr>,
-}
-
-impl JsonImpl {
-    pub fn new(langs: Vec<Language>, codecs: Vec<TrackBuff>, names: Vec<TrackBuff>) -> Self {
-        Self {
-            langs,
-            codecs,
-            names,
-            max: PlayListCtx::new(),
-            cur: PlayListCtx::new(),
-            buf: String::with_capacity(4 * 1024),
-            bdmv: OsStr::new("BDMV"),
-            extensions: vec![OsStr::new("mkv"), OsStr::new("mp4"), OsStr::new("avi"), OsStr::new("mov")],
-        }
-    }
-    pub fn check(&self, path: &Path) -> Result<bool, MkvPeelError> {
-        let meta = path.metadata()?;
-        if meta.is_dir() {
-            match path.join(self.bdmv).metadata() {
-                Ok(meta) => {
-                    Ok(meta.is_dir())
-                },
-                Err(err) => {
-                    if err.kind() == ErrorKind::NotFound {
-                        Ok(false)
-                    } else {
-                        Err(MkvPeelError::Io(err))
-                    }
-                }
-            }
-        } else {
-            Ok(path.extension()
-                .map(|ext| self.extensions.iter().any(|e| e.eq_ignore_ascii_case(ext)))
-                .unwrap_or(false))
-        }
-    }
-    pub fn peel(&mut self, src: &Path, dst: &Path) -> Result<(), MkvPeelError> {
-        let meta = src.metadata()?;
-        let mut src_max = Cow::Borrowed(src);
-        if meta.is_dir() {
-            let dir = src.join("BDMV/PLAYLIST");
-            let entries = dir.read_dir()?;
-            for entry in entries {
-                let entry = entry?;
-                let meta = entry.metadata()?;
-                if meta.is_file() {
-                    let src_cur = entry.path();
-                    if let Some(ext) = src_cur.extension() {
-                        if ext == OsStr::new("mpls") {
-                            let info = PlaylistInfo::load(&src_cur, &mut self.buf)?;
-                            if info.recognized() && info.supported() {
-                                if let Some(duration) = info.duration() {
-                                    if Duration::from_hours(1) <= duration && duration <= Duration::from_hours(6) {
-                                        self.cur.reload(&info, &self.langs, &self.codecs, &self.names);
-                                        if self.max.score < self.cur.score {
-                                            swap(&mut self.max, &mut self.cur);
-                                            src_max = Cow::Owned(src_cur);
-                                            debug!("max: {}, score: {}", src_max.display(), self.max.score);
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        } else {
-            let info = PlaylistInfo::load(&src, &mut self.buf)?;
-            self.max.reload(&info, &self.langs, &self.codecs, &self.names);
-        }
+impl <'a> PlaylistInfo<'a> {
+    pub fn load(path: &Path, buf: &'a mut String) -> Result<PlaylistInfo<'a>, MkvPeelError> {
+        buf.clear();
         let mut mkvmerge = Command::new("mkvmerge");
-        mkvmerge.arg("--output").arg(dst);
-        if !self.max.audio.is_empty() {
-            let ids = self.max.audio.ids()?;
-            mkvmerge.arg("--audio-tracks").arg(ids);
+        mkvmerge.arg("-J").arg(path);
+        let mut mkvmerge = mkvmerge
+            .stdout(Stdio::piped())
+            .spawn()?;
+        if let Some(stdout) = &mut mkvmerge.stdout {
+            let mut reader = BufReader::new(stdout);
+            reader.read_to_string(buf)?;
         }
-        if !self.max.subtitles.is_empty() {
-            let ids = self.max.subtitles.ids()?;
-            mkvmerge.arg("--subtitle-tracks").arg(ids);
-        }
-        mkvmerge.arg(src_max.as_ref());
-        info!("run: {:?}", mkvmerge);
-        pipe(mkvmerge)?;
-        Ok(())
+        mkvmerge.wait()?;
+        //info!("json: {}", buf.as_str());
+        let info = serde_json::from_str(buf.as_str())?;
+        //info!("info: {:?}", info);
+        Ok(info)
     }
 }
-

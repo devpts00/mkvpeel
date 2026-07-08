@@ -4,30 +4,25 @@ use std::thread::sleep;
 use std::time::Duration;
 use clap::Parser;
 use humantime::format_duration;
-use tracing::{debug, info, warn};
+use tracing::{debug, warn};
 use crate::args::{Cmd};
 use crate::error::MkvPeelError;
-use crate::json::JsonImpl;
+use crate::peel::PeelCtx;
 use crate::util::{init_tracing, ToOption, extract_name_without_ext, get_min_age, make_pretty_name, log};
 
 mod util;
 mod args;
 mod error;
+pub mod peel;
 pub mod json;
-pub mod model;
 
-fn scan(
-    peel: &mut JsonImpl,
-    src_dir: &Path,
-    dst_dir: &Path,
-    min_age: Duration
-) -> Result<(), MkvPeelError> {
+fn scan(peel_ctx: &mut PeelCtx, src_dir: &Path, dst_dir: &Path, min_age: Duration) -> Result<(), MkvPeelError> {
     for src_dir_entry in read_dir(src_dir)? {
         let src_dir_entry = src_dir_entry?;
         let src_meta = src_dir_entry.metadata()?;
         let src_path = src_dir_entry.path();
         debug!("found: {}", src_path.display());
-        match peel.check(&src_path) {
+        match peel_ctx.check(&src_path) {
             Ok(yes) => {
                 if yes {
                     if let Some(age) = get_min_age(&src_path, &src_meta).ok_warn("age", src_path.display()) {
@@ -38,22 +33,22 @@ fn scan(
                                         dst_name.push_str(".mkv");
                                         let dst_path = dst_dir.join(&dst_name);
                                         if !dst_path.exists() {
-                                            peel.peel(&src_path, &dst_path).ok_warn("peel", src_path.display());
+                                            peel_ctx.peel(&src_path, &dst_path).ok_warn("peel", src_path.display());
                                         } else {
-                                            debug!("exists: {}", dst_path.display());
+                                            debug!("already exists: {}", dst_path.display());
                                         }
                                     }
                                 }
                                 None => {
-                                    warn!("name: {}", src_path.display());
+                                    warn!("failed to prettify, name: {}", src_path.display());
                                 }
                             }
                         } else {
-                            debug!("waiting, age: {}, path: {}", format_duration(age), src_path.display());
+                            debug!("too young, age: {}, path: {}", format_duration(age), src_path.display());
                         }
                     }
                 } else if src_meta.is_dir() {
-                    scan(peel, &src_path, dst_dir, min_age)?;
+                    scan(peel_ctx, &src_path, dst_dir, min_age)?;
                 }
             }
             Err(err) => {
@@ -65,13 +60,13 @@ fn scan(
 }
 
 fn run(
-    peels: &mut JsonImpl,
+    peels: &mut PeelCtx,
     src_dir: &Path,
     dst_dir: &Path,
     pause: Duration,
     age: Duration
 ) -> Result<(), MkvPeelError> {
-    info!("run, src: {}, dst: {}", src_dir.display(), dst_dir.display());
+    debug!("run, src: {}, dst: {}", src_dir.display(), dst_dir.display());
     loop {
         scan(peels, src_dir, dst_dir, age)?;
         debug!("sleep: {} seconds", pause.as_secs());
@@ -88,7 +83,7 @@ fn main() {
     let langs = cmd.languages;
     let codecs = cmd.codec;
     let names = cmd.name;
-    let mut json_impl = JsonImpl::new(langs, codecs, names);
+    let mut json_impl = PeelCtx::new(langs, codecs, names);
     let pause = Duration::from(&cmd.pause);
     let age = Duration::from(&cmd.age);
     log(run(&mut json_impl, src_dir, dst_dir, pause, age));
