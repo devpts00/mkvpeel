@@ -4,15 +4,23 @@ use std::process::{Command, Stdio};
 use std::time::Duration;
 use isolang::Language;
 use serde::Deserialize;
+use tracing::warn;
 use crate::error::MkvPeelError;
 use crate::util::primary_lang;
 
 #[inline]
 fn codec_id(codec: &str) -> &str {
     match codec {
-        "E-AC-3" => "A_EAC3",
-        "Timed Text" => "S_TEXT/UTF8",
-        c => c
+        "E-AC-3" => {
+            "A_EAC3"
+        },
+        "Timed Text" => {
+            "S_TEXT/UTF8"
+        },
+        c => {
+            warn!("unknown codec name: '{}'", c);
+            c
+        }
     }
 }
 
