@@ -111,64 +111,69 @@ pub fn extract_name_without_ext<'a>(path: &'a Path, meta: &Metadata) -> Option<&
             if meta.is_dir() {
                 Some(name)
             } else if let Some(ext) = path.extension() {
-                ext.to_str().map(|ext| &name[..name.len() - ext.len()])
+                ext.to_str().map(|ext| &name[..name.len() - ext.len() - 1])
             } else {
                 Some(name)
             }
         })
 }
 
-pub fn make_pretty_name(src: &str) -> Result<String, std::fmt::Error> {
-    let mut dst = String::with_capacity(src.len() + 16);
-    let year_now = Utc::now().year() as u64;
-    let mut year_unlocked = false;
-    let mut year_in_progress = false;
-    let mut year_bracketed = false;
+pub fn make_pretty_name(src: &str, dst: &mut String) -> Result<(), std::fmt::Error> {
+    dst.clear();
+    let year_now = Utc::now().year() as u16;
+    let mut year: u16 = 0;
+    let mut digits: u8 = 0;
     let mut whitespace = true;
-    let mut year: u64 = 0;
-    for c in src.chars() {
-        if '0' <= c && c <= '9' && year_unlocked {
-            whitespace = false;
-            year_in_progress = true;
-            year = 10 * year + (c as u64 - '0' as u64);
+
+    #[inline]
+    fn finish(dst: &mut String, digits: u8, year: u16, year_now: u16) -> Result<bool, std::fmt::Error> {
+        if digits == 4 && 1900 <= year && year <= year_now {
+            // 4 digit meaningful year means we are done
+            // take care of brackets
+            if !dst[..dst.len() - 4].ends_with('(') {
+                dst.truncate(dst.len() - 4);
+                write!(dst, "({}", year)?;
+            }
+            dst.push(')');
+            Ok(true)
         } else {
-            if year_in_progress {
-                if 1900 <= year && year <= year_now {
-                    if !year_bracketed {
-                        dst.push('(');
-                    }
-                    write!(&mut dst, "{}", year)?;
-                    dst.push(')');
-                    break;
-                } else {
-                    write!(&mut dst, "{}", year)?;
-                    year_in_progress = false;
-                    year = 0;
-                }
-            }
-            year_unlocked = true;
-            if c == '.' || c =='_' || c.is_whitespace() {
-                year_bracketed = false;
-                if !whitespace {
-                    dst.push(' ');
-                    whitespace = true;
-                }
-            } else {
-                year_bracketed = c == '(';
-                if whitespace {
-                    for x in c.to_uppercase() {
-                        dst.push(x);
-                    }
-                } else {
-                    for x in c.to_lowercase() {
-                        dst.push(x);
-                    }
-                }
-                whitespace = false;
-            }
+            Ok(false)
         }
     }
-    Ok(dst)
+
+    for c in src.chars() {
+        if '0' <= c && c <= '9' {
+            // accumulate year up to 4 digits
+            if digits < 4 {
+                year = 10 * year + (c as u16 - '0' as u16);
+            }
+            dst.push(c);
+            digits += 1;
+            whitespace = false;
+        } else if finish(dst, digits, year, year_now)? {
+            return Ok(())
+        } else if c == '_' || c == '.' || c == ' ' {
+            if !whitespace {
+                dst.push(' ');
+                whitespace = true;
+            }
+            year = 0;
+        } else if whitespace {
+            for c in c.to_uppercase() {
+                dst.push(c);
+            }
+            whitespace = false;
+        } else {
+            for c in c.to_lowercase() {
+                dst.push(c);
+            }
+            whitespace = false;
+        }
+    }
+
+    finish(dst, digits, year, year_now)?;
+
+    Ok(())
 }
 
 pub fn pipe(mut cmd: Command) -> Result<(), MkvPeelError> {

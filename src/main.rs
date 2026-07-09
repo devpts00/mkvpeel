@@ -8,7 +8,7 @@ use tracing::{debug, warn};
 use crate::args::{Cmd};
 use crate::error::MkvPeelError;
 use crate::peel::PeelCtx;
-use crate::util::{init_tracing, ToOption, extract_name_without_ext, get_min_age, make_pretty_name, log};
+use crate::util::{init_tracing, ToOption, extract_name_without_ext, get_min_age, log, make_pretty_name};
 
 mod util;
 mod args;
@@ -16,7 +16,7 @@ mod error;
 pub mod peel;
 pub mod json;
 
-fn scan(peel_ctx: &mut PeelCtx, src_dir: &Path, dst_dir: &Path, min_age: Duration) -> Result<(), MkvPeelError> {
+fn scan(peel_ctx: &mut PeelCtx, src_dir: &Path, dst_dir: &Path, min_age: Duration, dst_name: &mut String) -> Result<(), MkvPeelError> {
     for src_dir_entry in read_dir(src_dir)? {
         let src_dir_entry = src_dir_entry?;
         let src_meta = src_dir_entry.metadata()?;
@@ -29,7 +29,7 @@ fn scan(peel_ctx: &mut PeelCtx, src_dir: &Path, dst_dir: &Path, min_age: Duratio
                         if age >= min_age {
                             match extract_name_without_ext(&src_path, &src_meta) {
                                 Some(src_name) => {
-                                    if let Some(mut dst_name) = make_pretty_name(src_name).ok_warn("prettify", src_name) {
+                                    if let Some(()) = make_pretty_name(src_name, dst_name).ok_warn("prettify", src_name) {
                                         dst_name.push_str(".mkv");
                                         let dst_path = dst_dir.join(&dst_name);
                                         if !dst_path.exists() {
@@ -48,7 +48,7 @@ fn scan(peel_ctx: &mut PeelCtx, src_dir: &Path, dst_dir: &Path, min_age: Duratio
                         }
                     }
                 } else if src_meta.is_dir() {
-                    scan(peel_ctx, &src_path, dst_dir, min_age)?;
+                    scan(peel_ctx, &src_path, dst_dir, min_age, dst_name)?;
                 }
             }
             Err(err) => {
@@ -67,8 +67,9 @@ fn run(
     age: Duration
 ) -> Result<(), MkvPeelError> {
     debug!("run, src: {}, dst: {}", src_dir.display(), dst_dir.display());
+    let mut dst_name = String::with_capacity(256);
     loop {
-        scan(peels, src_dir, dst_dir, age)?;
+        scan(peels, src_dir, dst_dir, age, &mut dst_name)?;
         debug!("sleep: {} seconds", pause.as_secs());
         sleep(pause);
     }

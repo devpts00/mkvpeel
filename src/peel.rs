@@ -215,6 +215,9 @@ impl PeelCtx {
         if let Some(src_max) = src_max {
             let mut mkvmerge = Command::new("mkvmerge");
             mkvmerge.arg("--output").arg(dst);
+            mkvmerge.arg("--no-buttons");
+            mkvmerge.arg("--no-attachments");
+            mkvmerge.arg("--no-global-tags");
             if !self.max.audio.is_empty() {
                 let ids = self.max.audio.get_ids()?;
                 mkvmerge.arg("--audio-tracks").arg(ids);
@@ -227,7 +230,6 @@ impl PeelCtx {
             info!("run: {:?}", mkvmerge);
             pipe(mkvmerge)?;
         }
-
         Ok(())
     }
 }

@@ -42,6 +42,7 @@ struct TrackPropsInfo<'a> {
     language: Option<&'a str>,
     language_ietf: Option<&'a str>,
     track_name: Option<&'a str>,
+    flag_commentary: Option<bool>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -99,7 +100,9 @@ impl <'a> PlaylistInfo<'a> {
     pub fn load(path: &Path, buf: &'a mut String) -> Result<PlaylistInfo<'a>, MkvPeelError> {
         buf.clear();
         let mut mkvmerge = Command::new("mkvmerge");
-        mkvmerge.arg("-J").arg(path);
+        mkvmerge
+            .arg("--output-charset").arg("UTF-8")
+            .arg("-J").arg(path);
         let mut mkvmerge = mkvmerge
             .stdout(Stdio::piped())
             .spawn()?;
