@@ -4,18 +4,27 @@ use std::process::{Command, Stdio};
 use std::time::Duration;
 use isolang::Language;
 use serde::Deserialize;
-use tracing::warn;
+use tracing::{debug, warn};
 use crate::error::MkvPeelError;
 use crate::util::primary_lang;
 
 #[inline]
 fn codec_id(codec: &str) -> &str {
     match codec {
+        "DTS-HD Master Audio" => {
+            "A_DTS"
+        },
         "E-AC-3" => {
             "A_EAC3"
         },
+        "AC-3" => {
+            "A_AC3"
+        },
         "Timed Text" => {
             "S_TEXT/UTF8"
+        },
+        "HDMV PGS" => {
+            "S_HDMV/PGS"
         },
         c => {
             warn!("unknown codec name: '{}'", c);
@@ -62,7 +71,8 @@ impl <'a> TrackInfo<'a> {
         self.kind
     }
     pub fn codec(&self) -> Option<&'a str> {
-        self.properties.codec_id.or(self.codec.map(codec_id))
+        //debug!("codec, id: {:?}, name: {:?}", self.properties.codec_id, self.codec);
+        self.properties.codec_id.or_else(|| self.codec.map(codec_id))
     }
     pub fn lang(&self) -> Option<Language> {
         self.properties.language_ietf.and_then(primary_lang)

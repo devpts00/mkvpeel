@@ -104,10 +104,13 @@ impl PlayListCtx {
     fn new() -> Self {
         Self { audio: TrackKindCtx::new(), subtitles: TrackKindCtx::new(), score: 0 }
     }
-    fn reload(&mut self, playlist_info: &PlaylistInfo, langs: &[Language], codecs: &[TrackBuff], names: &[TrackBuff]) {
+    fn clear(&mut self) {
         self.audio.clear();
         self.subtitles.clear();
         self.score = 0;
+    }
+    fn reload(&mut self, playlist_info: &PlaylistInfo, langs: &[Language], codecs: &[TrackBuff], names: &[TrackBuff]) {
+        self.clear();
         for track_info in playlist_info.tracks() {
             if let Some(kind) = track_info.kind() {
                 match kind {
@@ -176,6 +179,9 @@ impl PeelCtx {
         }
     }
     pub fn peel(&mut self, src: &Path, dst: &Path) -> Result<(), MkvPeelError> {
+        self.max.clear();
+        self.cur.clear();
+        debug!("peel, src: {}, dst: {}", src.display(), dst.display());
         let meta = src.metadata()?;
         let mut src_max: Option<Cow<Path>> = None;
         if meta.is_dir() {

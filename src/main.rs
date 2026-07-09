@@ -25,8 +25,10 @@ fn scan(peel_ctx: &mut PeelCtx, src_dir: &Path, dst_dir: &Path, min_age: Duratio
         match peel_ctx.check(&src_path) {
             Ok(yes) => {
                 if yes {
+                    debug!("checked: {}", src_path.display());
                     if let Some(age) = get_min_age(&src_path, &src_meta).ok_warn("age", src_path.display()) {
                         if age >= min_age {
+                            debug!("ready: {}", src_path.display());
                             match extract_name_without_ext(&src_path, &src_meta) {
                                 Some(src_name) => {
                                     if let Some(()) = make_pretty_name(src_name, dst_name).ok_warn("prettify", src_name) {
