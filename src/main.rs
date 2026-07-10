@@ -16,7 +16,7 @@ mod error;
 pub mod peel;
 pub mod json;
 
-fn scan(peel_ctx: &mut PeelCtx, src_dir: &Path, dst_dir: &Path, min_age: Duration, dst_name: &mut String) -> Result<(), MkvPeelError> {
+fn scan(peel_ctx: &mut PeelCtx, src_dir: &Path, dst_dir: &Path, min_age: Duration, dst_title: &mut String) -> Result<(), MkvPeelError> {
     for src_dir_entry in read_dir(src_dir)? {
         let src_dir_entry = src_dir_entry?;
         let src_meta = src_dir_entry.metadata()?;
@@ -31,11 +31,10 @@ fn scan(peel_ctx: &mut PeelCtx, src_dir: &Path, dst_dir: &Path, min_age: Duratio
                             debug!("ready: {}", src_path.display());
                             match extract_name_without_ext(&src_path, &src_meta) {
                                 Some(src_name) => {
-                                    if let Some(()) = make_pretty_name(src_name, dst_name).ok_warn("prettify", src_name) {
-                                        dst_name.push_str(".mkv");
-                                        let dst_path = dst_dir.join(&dst_name);
+                                    if let Some(()) = make_pretty_name(src_name, dst_title).ok_warn("prettify", src_name) {
+                                        let dst_path = dst_dir.join(&dst_title).with_extension("mkv");
                                         if !dst_path.exists() {
-                                            peel_ctx.peel(&src_path, &dst_path).ok_warn("peel", src_path.display());
+                                            peel_ctx.peel(&src_path, &dst_path, &dst_title).ok_warn("peel", src_path.display());
                                         } else {
                                             debug!("exists: {}", dst_path.display());
                                         }
@@ -50,7 +49,7 @@ fn scan(peel_ctx: &mut PeelCtx, src_dir: &Path, dst_dir: &Path, min_age: Duratio
                         }
                     }
                 } else if src_meta.is_dir() {
-                    scan(peel_ctx, &src_path, dst_dir, min_age, dst_name)?;
+                    scan(peel_ctx, &src_path, dst_dir, min_age, dst_title)?;
                 }
             }
             Err(err) => {

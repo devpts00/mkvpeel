@@ -182,7 +182,7 @@ impl PeelCtx {
                 .unwrap_or(false))
         }
     }
-    pub fn peel(&mut self, src: &Path, dst: &Path) -> Result<(), MkvPeelError> {
+    pub fn peel(&mut self, src: &Path, dst: &Path, title: &str) -> Result<(), MkvPeelError> {
         self.max.clear();
         self.cur.clear();
         debug!("peel, src: {}, dst: {}", src.display(), dst.display());
@@ -225,6 +225,7 @@ impl PeelCtx {
         if let Some(src_max) = src_max {
             let mut mkvmerge = Command::new("mkvmerge");
             mkvmerge.arg("--output").arg(dst);
+            mkvmerge.arg("--title").arg(title);
             mkvmerge.arg("--no-buttons");
             mkvmerge.arg("--no-attachments");
             mkvmerge.arg("--no-global-tags");
