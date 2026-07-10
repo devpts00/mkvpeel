@@ -1,3 +1,4 @@
+use std::borrow::Cow;
 use std::io::{BufReader, Read};
 use std::path::Path;
 use std::process::{Command, Stdio};
@@ -19,6 +20,9 @@ fn codec_id(codec: &str) -> &str {
         },
         "AC-3" => {
             "A_AC3"
+        },
+        "FLAC" => {
+            "A_FLAC"
         },
         "Timed Text" => {
             "S_TEXT/UTF8"
@@ -50,7 +54,7 @@ struct TrackPropsInfo<'a> {
     codec_id: Option<&'a str>,
     language: Option<&'a str>,
     language_ietf: Option<&'a str>,
-    track_name: Option<&'a str>,
+    track_name: Option<Cow<'a, str>>,
     flag_commentary: Option<bool>,
 }
 
@@ -78,8 +82,9 @@ impl <'a> TrackInfo<'a> {
         self.properties.language_ietf.and_then(primary_lang)
             .or(self.properties.language.and_then(primary_lang))
     }
-    pub fn name(&self) -> Option<&'a str> {
-        self.properties.track_name
+    pub fn name(&self) -> Option<&str> {
+        self.properties.track_name.as_ref()
+            .map(|name| name.as_ref())
     }
     pub fn is_commentary(&self) -> bool {
         self.properties.flag_commentary.unwrap_or(false)

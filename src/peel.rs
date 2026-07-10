@@ -156,7 +156,7 @@ impl PeelCtx {
             skip_commentary,
             max: PlayListCtx::new(),
             cur: PlayListCtx::new(),
-            buf: String::with_capacity(4 * 1024),
+            buf: String::with_capacity(32 * 1024),
             bdmv: OsStr::new("BDMV"),
             extensions: vec![OsStr::new("mkv"), OsStr::new("mp4"), OsStr::new("avi"), OsStr::new("mov")],
         }
