@@ -87,7 +87,8 @@ impl <'a> TrackInfo<'a> {
             .map(|name| name.as_ref())
     }
     pub fn is_commentary(&self) -> bool {
-        self.properties.flag_commentary.unwrap_or(false)
+        self.properties.flag_commentary
+            .unwrap_or(false)
     }
 }
 

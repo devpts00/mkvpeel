@@ -8,7 +8,7 @@ use tracing::{debug, warn};
 use crate::args::{Cmd};
 use crate::error::MkvPeelError;
 use crate::peel::PeelCtx;
-use crate::util::{init_tracing, ToOption, extract_name_without_ext, get_min_age, log, make_pretty_name};
+use crate::util::{init_tracing, ToOption, extract_name_without_ext, get_min_age, log, make_pretty_title};
 
 mod util;
 mod args;
@@ -31,7 +31,7 @@ fn scan(peel_ctx: &mut PeelCtx, src_dir: &Path, dst_dir: &Path, min_age: Duratio
                             debug!("ready: {}", src_path.display());
                             match extract_name_without_ext(&src_path, &src_meta) {
                                 Some(src_name) => {
-                                    if let Some(()) = make_pretty_name(src_name, dst_title).ok_warn("prettify", src_name) {
+                                    if let Some(()) = make_pretty_title(src_name, dst_title).ok_warn("prettify", src_name) {
                                         let dst_path = dst_dir.join(&dst_title).with_extension("mkv");
                                         if !dst_path.exists() {
                                             peel_ctx.peel(&src_path, &dst_path, &dst_title).ok_warn("peel", src_path.display());
@@ -41,11 +41,11 @@ fn scan(peel_ctx: &mut PeelCtx, src_dir: &Path, dst_dir: &Path, min_age: Duratio
                                     }
                                 }
                                 None => {
-                                    warn!("failed to prettify, name: {}", src_path.display());
+                                    warn!("prettify, name: {}", src_path.display());
                                 }
                             }
                         } else {
-                            debug!("too young, age: {}, path: {}", format_duration(age), src_path.display());
+                            debug!("waiting, age: {}, path: {}", format_duration(age), src_path.display());
                         }
                     }
                 } else if src_meta.is_dir() {
@@ -68,9 +68,9 @@ fn run(
     age: Duration,
 ) -> Result<(), MkvPeelError> {
     debug!("run, src: {}, dst: {}", src_dir.display(), dst_dir.display());
-    let mut dst_name = String::with_capacity(256);
+    let mut dst_title = String::with_capacity(256);
     loop {
-        scan(peels, src_dir, dst_dir, age, &mut dst_name)
+        scan(peels, src_dir, dst_dir, age, &mut dst_title)
             .ok_warn("scan", src_dir.display());
         debug!("sleep: {} seconds", pause.as_secs());
         sleep(pause);
@@ -87,8 +87,8 @@ fn main() {
     let codecs = cmd.codec;
     let names = cmd.name;
     let skip_commentary = cmd.skip_commentary;
-    let mut json_impl = PeelCtx::new(langs, codecs, names, skip_commentary);
     let pause = Duration::from(&cmd.pause);
     let age = Duration::from(&cmd.age);
+    let mut json_impl = PeelCtx::new(langs, codecs, names, skip_commentary);
     log(run(&mut json_impl, src_dir, dst_dir, pause, age));
 }

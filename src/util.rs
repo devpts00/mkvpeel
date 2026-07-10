@@ -118,7 +118,7 @@ pub fn extract_name_without_ext<'a>(path: &'a Path, meta: &Metadata) -> Option<&
         })
 }
 
-pub fn make_pretty_name(src: &str, dst: &mut String) -> Result<(), std::fmt::Error> {
+pub fn make_pretty_title(src: &str, dst: &mut String) -> Result<(), std::fmt::Error> {
     dst.clear();
     let year_now = Utc::now().year() as u16;
     let mut year: u16 = 0;
