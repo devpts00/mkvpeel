@@ -71,7 +71,8 @@ fn run(
     debug!("run, src: {}, dst: {}", src_dir.display(), dst_dir.display());
     let mut dst_name = String::with_capacity(256);
     loop {
-        scan(peels, src_dir, dst_dir, age, &mut dst_name)?;
+        scan(peels, src_dir, dst_dir, age, &mut dst_name)
+            .ok_warn("scan", src_dir.display());
         debug!("sleep: {} seconds", pause.as_secs());
         sleep(pause);
     }
