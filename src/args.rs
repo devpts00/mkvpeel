@@ -54,6 +54,8 @@ pub struct Cmd {
     pub codec: Vec<TrackBuff>,
     #[arg(long)]
     pub name: Vec<TrackBuff>,
+    #[arg(long, default_value = "true")]
+    pub skip_commentary: bool,
     #[arg(long, default_value = "60s", value_parser = duration_range_value_parse!(min: 10s, max: 10min))]
     pub pause: DurationHuman,
     #[arg(long, default_value = "60s", value_parser = duration_range_value_parse!(min: 10s, max: 60min))]

@@ -109,23 +109,25 @@ impl PlayListCtx {
         self.subtitles.clear();
         self.score = 0;
     }
-    fn reload(&mut self, playlist_info: &PlaylistInfo, langs: &[Language], codecs: &[TrackBuff], names: &[TrackBuff]) {
+    fn reload(&mut self, playlist_info: &PlaylistInfo, langs: &[Language], codecs: &[TrackBuff], names: &[TrackBuff], skip_commentary: bool) {
         self.clear();
         for track_info in playlist_info.tracks() {
-            if let Some(kind) = track_info.kind() {
-                match kind {
-                    "video" => {
-                        self.score += 1000;
-                    }
-                    "audio" => {
-                        self.score += 100;
-                        self.audio.upsert(langs, codecs, names, track_info);
-                    }
-                    "subtitles" => {
-                        self.score += 10;
-                        self.subtitles.upsert(langs, codecs, names, track_info);
-                    }
-                    _ => {
+            if !track_info.is_commentary() || !skip_commentary {
+                if let Some(kind) = track_info.kind() {
+                    match kind {
+                        "video" => {
+                            self.score += 1000;
+                        }
+                        "audio" => {
+                            self.score += 100;
+                            self.audio.upsert(langs, codecs, names, track_info);
+                        }
+                        "subtitles" => {
+                            self.score += 10;
+                            self.subtitles.upsert(langs, codecs, names, track_info);
+                        }
+                        _ => {
+                        }
                     }
                 }
             }
@@ -137,6 +139,7 @@ pub struct PeelCtx {
     langs: Vec<Language>,
     codecs: Vec<TrackBuff>,
     names: Vec<TrackBuff>,
+    skip_commentary: bool,
     max: PlayListCtx,
     cur: PlayListCtx,
     buf: String,
@@ -145,11 +148,12 @@ pub struct PeelCtx {
 }
 
 impl PeelCtx {
-    pub fn new(langs: Vec<Language>, codecs: Vec<TrackBuff>, names: Vec<TrackBuff>) -> Self {
+    pub fn new(langs: Vec<Language>, codecs: Vec<TrackBuff>, names: Vec<TrackBuff>, skip_commentary: bool) -> Self {
         Self {
             langs,
             codecs,
             names,
+            skip_commentary,
             max: PlayListCtx::new(),
             cur: PlayListCtx::new(),
             buf: String::with_capacity(4 * 1024),
@@ -198,7 +202,7 @@ impl PeelCtx {
                             if info.recognized() && info.supported() {
                                 if let Some(duration) = info.duration() {
                                     if Duration::from_hours(1) <= duration && duration <= Duration::from_hours(6) {
-                                        self.cur.reload(&info, &self.langs, &self.codecs, &self.names);
+                                        self.cur.reload(&info, &self.langs, &self.codecs, &self.names, self.skip_commentary);
                                         //info!("reload, current: {}, score: {}", src_cur.display(), self.cur.score);
                                         if self.max.score < self.cur.score {
                                             debug!("lead: {}, score: {}", src_cur.display(), self.cur.score);
@@ -214,7 +218,7 @@ impl PeelCtx {
             }
         } else {
             let info = PlaylistInfo::load(src, &mut self.buf)?;
-            self.max.reload(&info, &self.langs, &self.codecs, &self.names);
+            self.max.reload(&info, &self.langs, &self.codecs, &self.names, self.skip_commentary);
             src_max = Some(Cow::Borrowed(src))
         }
 

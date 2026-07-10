@@ -16,6 +16,7 @@ run-debug: build-debug
 		--src=./in \
 		--dst=./out \
 		--languages=en,ru \
+		--skip-commentary \
 		--codec A_TRUEHD:1000 \
 		--codec A_EAC3:100 \
 		--codec A_AC3:10 \
@@ -36,6 +37,7 @@ run-release: build-release
 		--src=./in \
 		--dst=./out \
 		--languages=en,ru \
+		--skip-commentary \
 		--codec A_TRUEHD:1000 \
 		--codec A_EAC3:100 \
 		--codec A_AC3:10 \

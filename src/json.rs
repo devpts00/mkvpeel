@@ -4,7 +4,7 @@ use std::process::{Command, Stdio};
 use std::time::Duration;
 use isolang::Language;
 use serde::Deserialize;
-use tracing::{debug, warn};
+use tracing::warn;
 use crate::error::MkvPeelError;
 use crate::util::primary_lang;
 
@@ -80,6 +80,9 @@ impl <'a> TrackInfo<'a> {
     }
     pub fn name(&self) -> Option<&'a str> {
         self.properties.track_name
+    }
+    pub fn is_commentary(&self) -> bool {
+        self.properties.flag_commentary.unwrap_or(false)
     }
 }
 

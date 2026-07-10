@@ -37,7 +37,7 @@ fn scan(peel_ctx: &mut PeelCtx, src_dir: &Path, dst_dir: &Path, min_age: Duratio
                                         if !dst_path.exists() {
                                             peel_ctx.peel(&src_path, &dst_path).ok_warn("peel", src_path.display());
                                         } else {
-                                            debug!("already exists: {}", dst_path.display());
+                                            debug!("exists: {}", dst_path.display());
                                         }
                                     }
                                 }
@@ -66,7 +66,7 @@ fn run(
     src_dir: &Path,
     dst_dir: &Path,
     pause: Duration,
-    age: Duration
+    age: Duration,
 ) -> Result<(), MkvPeelError> {
     debug!("run, src: {}, dst: {}", src_dir.display(), dst_dir.display());
     let mut dst_name = String::with_capacity(256);
@@ -86,7 +86,8 @@ fn main() {
     let langs = cmd.languages;
     let codecs = cmd.codec;
     let names = cmd.name;
-    let mut json_impl = PeelCtx::new(langs, codecs, names);
+    let skip_commentary = cmd.skip_commentary;
+    let mut json_impl = PeelCtx::new(langs, codecs, names, skip_commentary);
     let pause = Duration::from(&cmd.pause);
     let age = Duration::from(&cmd.age);
     log(run(&mut json_impl, src_dir, dst_dir, pause, age));
