@@ -19,6 +19,7 @@ run-debug: build-debug
 		--skip-commentary \
 		--codec A_TRUEHD:1000 \
 		--codec A_EAC3:100 \
+		--codec A_DTS:10 \
 		--codec A_AC3:10 \
 		--codec A_FLAC:-10 \
 		--codec S_TEXT/UTF8:100 \
@@ -27,6 +28,7 @@ run-debug: build-debug
 		--name full:100 \
 		--name sdh:-100 \
 		--name форс:-100 \
+		--name force:-100 \
 		--name conversation:-1000 \
 		--name comment:-1000 \
 		--name коммент:-1000
@@ -40,6 +42,7 @@ run-release: build-release
 		--skip-commentary \
 		--codec A_TRUEHD:1000 \
 		--codec A_EAC3:100 \
+		--codec A_DTS:10 \
 		--codec A_AC3:10 \
 		--codec A_FLAC:-10 \
 		--codec S_TEXT/UTF8:100 \
@@ -48,6 +51,7 @@ run-release: build-release
 		--name full:100 \
 		--name sdh:-100 \
 		--name форс:-100 \
+		--name force:-100 \
 		--name conversation:-1000 \
 		--name comment:-1000 \
 		--name коммент:-1000
