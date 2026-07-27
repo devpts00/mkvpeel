@@ -4,6 +4,7 @@ use std::ffi::OsStr;
 use std::fmt::{Display, Formatter, Write};
 use std::io::{ErrorKind};
 use std::mem::swap;
+use std::os::unix::fs::MetadataExt;
 use std::path::{Path};
 use std::process::{Command};
 use std::time::Duration;
@@ -177,7 +178,8 @@ impl PeelCtx {
                 }
             }
         } else {
-            Ok(path.extension()
+            let min_size: u64 = 1024 * 1024 * 1024;
+            Ok(meta.size() >= min_size && path.extension()
                 .map(|ext| self.extensions.iter().any(|e| e.eq_ignore_ascii_case(ext)))
                 .unwrap_or(false))
         }

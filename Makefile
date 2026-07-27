@@ -11,7 +11,7 @@ build-release:
 	cargo build --release --target x86_64-unknown-linux-musl
 
 run-debug: build-debug
-	RUST_LOG=info,mkvpeel=trace \
+	RUST_LOG=info,mkvpeel=debug \
 		./target/x86_64-unknown-linux-musl/debug/mkvpeel \
 		--src=./in \
 		--dst=./out \
