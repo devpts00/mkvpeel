@@ -11,7 +11,7 @@ use chrono::{Datelike, Utc};
 use isolang::Language;
 use oxilangtag::LanguageTag;
 use tracing::level_filters::LevelFilter;
-use tracing::{debug, error, warn};
+use tracing::{debug, error, trace, warn};
 use tracing_subscriber::fmt::format::FmtSpan;
 use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::util::SubscriberInitExt;
@@ -126,8 +126,8 @@ pub fn make_pretty_title(src: &str, dst: &mut String) -> Result<(), std::fmt::Er
     let mut whitespace = true;
 
     #[inline]
-    fn finish(dst: &mut String, digits: u8, year: u16, year_now: u16) -> Result<bool, std::fmt::Error> {
-        if digits == 4 && 1900 <= year && year <= year_now {
+    fn finish(dst: &mut String, digits: &mut u8, year: &mut u16, year_now: u16) -> Result<bool, std::fmt::Error> {
+        if *digits == 4 && 1900 <= *year && *year <= year_now {
             // 4 digit meaningful year means we are done
             // take care of brackets
             if !dst[..dst.len() - 4].ends_with('(') {
@@ -137,11 +137,14 @@ pub fn make_pretty_title(src: &str, dst: &mut String) -> Result<(), std::fmt::Er
             dst.push(')');
             Ok(true)
         } else {
+            *year = 0;
+            *digits = 0;
             Ok(false)
         }
     }
 
     for c in src.chars() {
+        trace!("dst: {}, c: {}, year: {}", dst.as_str(), c, year);
         if '0' <= c && c <= '9' {
             // accumulate year up to 4 digits
             if digits < 4 {
@@ -150,14 +153,13 @@ pub fn make_pretty_title(src: &str, dst: &mut String) -> Result<(), std::fmt::Er
             dst.push(c);
             digits += 1;
             whitespace = false;
-        } else if finish(dst, digits, year, year_now)? {
+        } else if finish(dst, &mut digits, &mut year, year_now)? {
             return Ok(())
         } else if c == '_' || c == '.' || c == ' ' {
             if !whitespace {
                 dst.push(' ');
                 whitespace = true;
             }
-            year = 0;
         } else if whitespace {
             for c in c.to_uppercase() {
                 dst.push(c);
@@ -171,7 +173,7 @@ pub fn make_pretty_title(src: &str, dst: &mut String) -> Result<(), std::fmt::Er
         }
     }
 
-    finish(dst, digits, year, year_now)?;
+    finish(dst, &mut digits, &mut year, year_now)?;
 
     Ok(())
 }

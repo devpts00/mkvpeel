@@ -122,6 +122,7 @@ impl <'a> PlaylistInfo<'a> {
         mkvmerge
             .arg("--output-charset").arg("UTF-8")
             .arg("-J").arg(path);
+
         let mut mkvmerge = mkvmerge
             .stdout(Stdio::piped())
             .spawn()?;

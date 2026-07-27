@@ -13,4 +13,4 @@ However, when making personal movie collections on the well known hardware assem
 need to remove extra tracks one will never use to save space. This tool allows to specify the rules 
 and peel off unneeded tracks. The tool monitors the specified directory and runs `mkvmerge` with 
 corresponding arguments. The resulting mkv files are placed into the other directory. 
-The tool is lightweight (~3.5Mb RSS) enough to be run on NAS in docker. 
+The tool is lightweight (~3.5Mb RSS) enough to be run on NAS in docker.
