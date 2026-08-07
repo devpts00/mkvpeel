@@ -31,7 +31,9 @@ run-debug: build-debug
 		--name force:-100 \
 		--name conversation:-1000 \
 		--name comment:-1000 \
-		--name коммент:-1000
+		--name коммент:-1000 \
+		--name interview:-1000 \
+		--name интервью:-1000
 
 run-release: build-release
 	RUST_LOG=info,mkvpeel=info \
@@ -54,7 +56,9 @@ run-release: build-release
 		--name force:-100 \
 		--name conversation:-1000 \
 		--name comment:-1000 \
-		--name коммент:-1000
+		--name коммент:-1000 \
+		--name interview:-1000 \
+		--name интервью:-1000
 
 pull-docker:
 	docker compose pull
