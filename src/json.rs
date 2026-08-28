@@ -5,7 +5,7 @@ use std::process::{Command, Stdio};
 use std::time::Duration;
 use isolang::Language;
 use serde::Deserialize;
-use tracing::warn;
+use tracing::{debug, warn};
 use crate::error::MkvPeelError;
 use crate::util::primary_lang;
 
@@ -15,6 +15,9 @@ fn codec_id(codec: &str) -> &str {
         "DTS-HD Master Audio" => {
             "A_DTS"
         },
+        "DTS" => {
+            "A_DTS"
+        }
         "E-AC-3" => {
             "A_EAC3"
         },
@@ -75,7 +78,7 @@ impl <'a> TrackInfo<'a> {
         self.kind
     }
     pub fn codec(&self) -> Option<&'a str> {
-        //debug!("codec, id: {:?}, name: {:?}", self.properties.codec_id, self.codec);
+        debug!("codec, id: {:?}, name: {:?}", self.properties.codec_id, self.codec);
         self.properties.codec_id.or_else(|| self.codec.map(codec_id))
     }
     pub fn lang(&self) -> Option<Language> {

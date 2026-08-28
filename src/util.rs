@@ -11,7 +11,7 @@ use chrono::{Datelike, Utc};
 use isolang::Language;
 use oxilangtag::LanguageTag;
 use tracing::level_filters::LevelFilter;
-use tracing::{debug, error, trace, warn};
+use tracing::{debug, error, info, trace, warn};
 use tracing_subscriber::fmt::format::FmtSpan;
 use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::util::SubscriberInitExt;
@@ -183,10 +183,10 @@ pub fn pipe(mut cmd: Command) -> Result<(), MkvPeelError> {
         .spawn()?;
     if let Some(stdout) = &mut child.stdout {
         let reader = BufReader::new(stdout);
-        for _ in reader.lines() {
-            // if let Ok(line) = line {
-            //     info!("{}: {}", cmd.get_program().display(), line);
-            // }
+        for line in reader.lines() {
+            if let Ok(line) = line {
+                info!("{}: {}", cmd.get_program().display(), line);
+            }
         }
     }
     child.wait()?;
